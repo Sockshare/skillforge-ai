@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-PORT="${PORT:-8091}"
+PORT="${PORT:-8108}"
 
 if [[ "${1:-}" == "--test" ]]; then
   echo "Running SkillForge AI test suite..."

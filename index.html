@@ -66,8 +66,29 @@
         <!-- Left Column: Input Blueprint & Configuration -->
         <div class="card">
           <div class="card-header">
-            <h2>Skill Specification &amp; Blueprint Input</h2>
+            <h2>Web Application / OpenAPI / Policy Blueprint → LLM Skill Input</h2>
             <span class="badge badge-outline">Stage 1 Input</span>
+          </div>
+
+          <div class="form-group" style="background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 10px; padding: 12px; margin-bottom: 14px;">
+            <label for="webapp-template-select" style="color: #a5b4fc; font-weight: 700;">
+              🌐 Convert a Web Application into an LLM Skill (FastAPI / Flask / Express / Python HTTP / OpenAPI)
+            </label>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px;">
+              <select id="webapp-template-select" class="input-control" style="flex: 1; min-width: 220px;">
+                <option value="">-- Choose a Sample Web Application to Convert (or paste code below) --</option>
+                <option value="trustforge-soc2-webapp">TrustForge SOC 2 Web App (Python HTTP + /api/assess, /api/triage-7gate)</option>
+                <option value="fastapi-finops-portal">FastAPI Cloud FinOps &amp; GPU Cluster Rightsizing Web App</option>
+                <option value="flask-secops-incident-app">Flask SecOps Incident Response &amp; CVE Triage Web App</option>
+                <option value="express-privacy-dsar-app">Express.js + React GDPR/CCPA DSAR Fulfillment Web App</option>
+              </select>
+              <button id="btn-convert-webapp" class="btn btn-primary" type="button">
+                🔍 Convert Web App → LLM Skill
+              </button>
+            </div>
+            <div id="webapp-routes-banner" class="text-muted" style="font-size: 0.78rem; margin-top: 6px;">
+              Paste any web app's <code>server.py</code>, <code>app.py</code>, <code>routes.js</code>, or <code>OpenAPI 3.1 JSON</code> below to automatically extract its HTTP routes and compile a deterministic <code>SKILL.md</code> + <code>mcp_server.py</code> + CLI tool for LLMs.
+            </div>
           </div>
 
           <div class="form-row-2">
@@ -88,7 +109,7 @@
 
           <div class="form-group">
             <label for="skill-blueprint-input">
-              OpenAPI 3.1 JSON / Policy Rules / Sample Workload Fixture (Editable JSON or Blueprint)
+              Web App Source Code (<code>@app.get</code> / <code>@app.route</code> / <code>fetch</code>) / OpenAPI 3.1 JSON / Workload Fixture
             </label>
             <textarea id="skill-blueprint-input" rows="11" class="input-control code-textarea" spellcheck="false"></textarea>
           </div>

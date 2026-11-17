@@ -27,8 +27,90 @@ def normalize_slug(raw_name: str) -> str:
     return slug or "custom-agent-skill"
 
 
+def introspect_webapp_source(raw_source: str, app_name: str = "webapp-agent-skill") -> Dict[str, Any]:
+    """Extract REST API routes, HTTP methods, and UI actions from FastAPI, Flask, Express, http.server, or HTML/JS web app code."""
+    routes: List[Dict[str, str]] = []
+    seen = set()
+
+    # 1. FastAPI / Express style: @app.get("/api/...") or app.post('/api/...')
+    for m in re.finditer(r'(?:@app|@router|app|router)\.(get|post|put|delete|patch)\(\s*[\'"]([^\'"]+)[\'"]', raw_source, re.IGNORECASE):
+        method = m.group(1).upper()
+        path = m.group(2).strip()
+        key = f"{method} {path}"
+        if key not in seen:
+            seen.add(key)
+            routes.append({"method": method, "path": path, "source": "decorator_or_router"})
+
+    # 2. Flask style: @app.route("/api/...", methods=["POST"])
+    for m in re.finditer(r'@(?:app|bp|blueprint)\.route\(\s*[\'"]([^\'"]+)[\'"](?:[^)]*methods\s*=\s*\[([^\]]+)\])?', raw_source, re.IGNORECASE):
+        path = m.group(1).strip()
+        methods_raw = m.group(2) or '"GET"'
+        methods = [x.strip().strip('\'"').upper() for x in methods_raw.split(",") if x.strip()]
+        for method in (methods or ["GET"]):
+            key = f"{method} {path}"
+            if key not in seen:
+                seen.add(key)
+                routes.append({"method": method, "path": path, "source": "flask_route"})
+
+    # 3. Python http.server style: path == "/api/..."
+    for m in re.finditer(r'path\s*==\s*[\'"](/[^\'"]+)[\'"]', raw_source):
+        path = m.group(1).strip()
+        method = "POST" if any(k in path for k in ("compile", "assess", "triage", "analyze", "verify", "rpc", "create", "update", "fulfill")) else "GET"
+        key = f"{method} {path}"
+        if key not in seen:
+            seen.add(key)
+            routes.append({"method": method, "path": path, "source": "http_server_handler"})
+
+    # 4. Frontend fetch("/api/...") calls
+    for m in re.finditer(r'fetch\(\s*[\'"](/[^\'"]+)[\'"]', raw_source):
+        path = m.group(1).strip()
+        key = f"POST {path}" if f"POST {path}" in seen else f"GET {path}"
+        if f"GET {path}" not in seen and f"POST {path}" not in seen:
+            seen.add(f"GET {path}")
+            routes.append({"method": "GET", "path": path, "source": "frontend_fetch"})
+
+    if not routes:
+        routes = [
+            {"method": "GET", "path": "/api/health", "source": "default_webapp"},
+            {"method": "POST", "path": "/api/execute", "source": "default_webapp"},
+        ]
+
+    slug = normalize_slug(app_name)
+    rules = []
+    items = []
+    for idx, rt in enumerate(routes[:6], start=1):
+        rid = f"WEBAPP-{idx:03d}"
+        rules.append({
+            "rule_id": rid,
+            "title": f"Invoke & Validate {rt['method']} {rt['path']} Web App Endpoint",
+            "severity": "HIGH" if rt["method"] in ("POST", "PUT", "DELETE") else "MEDIUM",
+            "control": f"MCP Tool Bridge ({rt['method']} {rt['path']})",
+            "check": "webapp_route_contract",
+            "remediation": f"Ensure {rt['method']} {rt['path']} returns deterministic JSON matching the skill schema.",
+        })
+        items.append({
+            "id": f"{rt['method']} {rt['path']}",
+            "endpoint": rt["path"],
+            "method": rt["method"],
+            "compliant": True if rt["method"] == "GET" else False,
+            "missing_tags": False,
+            "detail": f"Bridged web app endpoint ({rt['source']}) for LLM tool invocation",
+        })
+
+    return {
+        "routes_discovered": routes,
+        "rules": rules,
+        "sample_input": {
+            "webapp_name": slug,
+            "environment": "production",
+            "routes_discovered": [f"{r['method']} {r['path']}" for r in routes],
+            "items": items,
+        },
+    }
+
+
 def parse_blueprint_or_preset(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Stage 1 helper: Resolve a preset ID or parse a custom OpenAPI/code/blueprint spec."""
+    """Stage 1 helper: Resolve a preset ID or parse a custom OpenAPI/WebApp/blueprint spec."""
     preset_id = payload.get("preset_id")
     if preset_id and preset_id in PRESETS and not payload.get("custom_override"):
         spec = json.loads(json.dumps(get_preset(preset_id)))
@@ -37,10 +119,9 @@ def parse_blueprint_or_preset(payload: Dict[str, Any]) -> Dict[str, Any]:
         slug = normalize_slug(raw_name)
         raw_blueprint = (payload.get("blueprint") or "").strip()
         description = payload.get("description") or (
-            f"Deterministic verification and automation skill for {slug}. "
-            "Use when validating structured workloads, OpenAPI contracts, or security policies."
+            f"Deterministic LLM Agent Skill and MCP tool bridge for {slug}. "
+            "Use when an LLM needs to invoke web application endpoints, validate API payloads, or automate workflows."
         )
-        # Try parsing blueprint as OpenAPI / JSON if provided
         extracted_rules: List[Dict[str, Any]] = payload.get("rules") or []
         sample_input: Dict[str, Any] = payload.get("sample_input") or {}
         if raw_blueprint and not extracted_rules:
@@ -76,7 +157,11 @@ def parse_blueprint_or_preset(payload: Dict[str, Any]) -> Dict[str, Any]:
                         ],
                     }
             except json.JSONDecodeError:
-                pass
+                # Check if raw_blueprint contains Web App source code (FastAPI/Flask/Express/http.server/fetch)
+                if any(tok in raw_blueprint for tok in ("@app.", "app.get(", "app.post(", "path ==", "fetch(", "/api/")):
+                    introspected = introspect_webapp_source(raw_blueprint, slug)
+                    extracted_rules = introspected["rules"]
+                    sample_input = introspected["sample_input"]
 
         if not extracted_rules:
             extracted_rules = [

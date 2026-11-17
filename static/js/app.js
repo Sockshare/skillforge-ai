@@ -387,6 +387,139 @@ async function sha256Hex(message) {
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+const WEBAPP_TEMPLATES = {
+  "trustforge-soc2-webapp": {
+    name: "trustforge-soc2-agent-skill",
+    category: "Web App → LLM Skill (AICPA SOC 2 & GRC)",
+    description:
+      "Bridges the TrustForge SOC 2 Web Application REST endpoints (/api/assess, /api/triage-7gate, /api/analyze-vendor, /api/crosswalk) into a deterministic LLM Agent Skill (SKILL.md) and Model Context Protocol (MCP) server.",
+    code: `# TrustForge SOC 2 Web Application (server.py excerpt)
+class TrustForgeRequestHandler(SimpleHTTPRequestHandler):
+    def do_GET(self):
+        if path == "/api/health":
+            return self._send_json({"status": "ok", "service": "trustforge-soc2"})
+        if path == "/api/environments":
+            return self._send_json({"environments": list_environments()})
+        if path == "/api/crosswalk":
+            return self._send_json({"criteria": get_crosswalk_catalog()})
+
+    def do_POST(self):
+        if path == "/api/assess":
+            return self._send_json(run_soc2_assessment(env_id, audit_type))
+        if path == "/api/triage-7gate":
+            return self._send_json(evaluate_7gate_finding(finding))
+        if path == "/api/analyze-vendor":
+            return self._send_json(analyze_vendor_soc2(vendor))
+        if path == "/api/verify-determinism":
+            return self._send_json(verify_three_run_determinism(env_id))`
+  },
+  "fastapi-finops-portal": {
+    name: "fastapi-finops-portal-skill",
+    category: "Web App → LLM Skill (Cloud FinOps)",
+    description:
+      "Converts a FastAPI Cloud FinOps & GPU Rightsizing Web Application into an LLM Skill (SKILL.md) and MCP tool server for automated cloud waste remediation.",
+    code: `# FastAPI Cloud FinOps Web Application (app.py)
+from fastapi import FastAPI
+app = FastAPI(title="Cloud FinOps & GPU Rightsizing Portal")
+
+@app.get("/api/v1/clusters/utilization")
+def list_cluster_utilization(region: str = "us-east-1"):
+    return {"clusters": ["eks-ml-prod-01", "eks-batch-02"]}
+
+@app.post("/api/v1/recommendations/rightsize")
+def compute_rightsizing_plan(cluster_id: str, target_p95_pct: float = 65.0):
+    return {"cluster_id": cluster_id, "monthly_savings_usd": 4280.0}
+
+@app.delete("/api/v1/volumes/unattached")
+def purge_unattached_ebs_volumes(dry_run: bool = True):
+    return {"reclaimed_volumes": 14, "dry_run": dry_run}`
+  },
+  "flask-secops-incident-app": {
+    name: "flask-secops-incident-triage-skill",
+    category: "Web App → LLM Skill (SecOps & AppSec)",
+    description:
+      "Turns a Flask SecOps Incident Response & CVE Triage Web Application into a callable LLM Skill and MCP JSON-RPC 2.0 server.",
+    code: `# Flask SecOps Incident & CVE Triage Web App (server.py)
+from flask import Flask, request, jsonify
+app = Flask(__name__)
+
+@app.route("/api/incidents/active", methods=["GET"])
+def get_active_incidents():
+    return jsonify({"active_incidents": 3})
+
+@app.route("/api/cve/evaluate-sla", methods=["POST"])
+def evaluate_cve_sla():
+    return jsonify({"cve_id": "CVE-2026-1042", "sla_status": "WITHIN_WINDOW"})
+
+@app.route("/api/playbooks/isolate-workload", methods=["POST"])
+def isolate_compromised_workload():
+    return jsonify({"action": "network_policy_quarantine", "verified": True})`
+  },
+  "express-privacy-dsar-app": {
+    name: "express-privacy-dsar-portal-skill",
+    category: "Web App → LLM Skill (Data Privacy GDPR/CCPA)",
+    description:
+      "Converts an Express.js + React GDPR/CCPA Data Subject Access Request (DSAR) Web Application into a deterministic LLM Privacy Skill and MCP tool.",
+    code: `// Express.js GDPR & CCPA DSAR Fulfillment Web App (routes.js)
+const express = require('express');
+const router = express.Router();
+
+router.get('/api/dsar/queue', (req, res) => {
+  res.json({ pending_requests: 12, statutory_window_days: 30 });
+});
+
+router.post('/api/dsar/discover-pii-lineage', (req, res) => {
+  res.json({ subject_id: req.body.subject_id, systems_matched: ['postgres-users', 'snowflake-events'] });
+});
+
+router.post('/api/dsar/execute-erasure', (req, res) => {
+  res.json({ status: 'CRYPTOGRAPHIC_ERASURE_VERIFIED', article: 'GDPR Art. 17' });
+});`
+  }
+};
+
+function extractWebAppRoutesClient(rawSource) {
+  const routes = [];
+  const seen = new Set();
+  const regexes = [
+    /(?:@app|@router|app|router)\.(get|post|put|delete|patch)\(\s*['"]([^'"]+)['"]/gi,
+    /path\s*==\s*['"](\/[^'"]+)['"]/g,
+    /@(?:app|bp|blueprint)\.route\(\s*['"]([^'"]+)['"](?:[^)]*methods\s*=\s*\[([^\]]+)\])?/gi,
+    /fetch\(\s*['"](\/[^'"]+)['"]/g
+  ];
+
+  let m;
+  while ((m = regexes[0].exec(rawSource)) !== null) {
+    const method = m[1].toUpperCase();
+    const path = m[2].trim();
+    const key = `${method} ${path}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      routes.push({ method, path });
+    }
+  }
+  while ((m = regexes[1].exec(rawSource)) !== null) {
+    const path = m[1].trim();
+    const method = /(compile|assess|triage|analyze|verify|rpc|create|update|fulfill)/.test(path) ? "POST" : "GET";
+    const key = `${method} ${path}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      routes.push({ method, path });
+    }
+  }
+  while ((m = regexes[2].exec(rawSource)) !== null) {
+    const path = m[1].trim();
+    const methodsRaw = m[2] || '"GET"';
+    const method = methodsRaw.replace(/['"\s]/g, "").split(",")[0].toUpperCase() || "GET";
+    const key = `${method} ${path}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      routes.push({ method, path });
+    }
+  }
+  return routes;
+}
+
 /**
  * In-Browser Fallback Compiler & Evaluator (used when hosted statically on GitHub Pages)
  */
@@ -401,7 +534,7 @@ async function compileInBrowser(payload) {
     ...preset,
     id: slug,
     name: slug,
-    title: payload.title || preset.title,
+    title: payload.title || slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
     category: payload.category || preset.category,
     description: payload.description || preset.description
   };
@@ -413,7 +546,28 @@ async function compileInBrowser(payload) {
         spec.sample_input = parsed;
       }
     } catch (_) {
-      // Keep default sample_input if free-text blueprint
+      const routes = extractWebAppRoutesClient(payload.blueprint);
+      if (routes.length > 0) {
+        spec.rules = routes.slice(0, 6).map((rt, idx) => ({
+          rule_id: `WEBAPP-00${idx + 1}`,
+          title: `Invoke & Validate ${rt.method} ${rt.path} Web App Endpoint`,
+          severity: rt.method === "GET" ? "MEDIUM" : "HIGH",
+          control: `MCP Tool Bridge (${rt.method} ${rt.path})`,
+          remediation: `Ensure ${rt.method} ${rt.path} returns deterministic JSON matching the skill schema.`
+        }));
+        spec.sample_input = {
+          webapp_name: slug,
+          environment: "production",
+          routes_discovered: routes.map((r) => `${r.method} ${r.path}`),
+          items: routes.map((r) => ({
+            id: `${r.method} ${r.path}`,
+            endpoint: r.path,
+            method: r.method,
+            compliant: r.method === "GET",
+            detail: "Bridged web app endpoint for LLM tool invocation"
+          }))
+        };
+      }
     }
   }
 
@@ -965,6 +1119,42 @@ function initStudio() {
     await runCompilation();
     document.querySelector('[data-tab="tab-determinism"]').click();
   });
+
+  const webAppSelect = document.getElementById("webapp-template-select");
+  const convertBtn = document.getElementById("btn-convert-webapp");
+  const bannerEl = document.getElementById("webapp-routes-banner");
+
+  function loadAndConvertWebApp() {
+    const selectedKey = webAppSelect ? webAppSelect.value : "";
+    if (selectedKey && WEBAPP_TEMPLATES[selectedKey]) {
+      const tpl = WEBAPP_TEMPLATES[selectedKey];
+      document.getElementById("skill-name-input").value = tpl.name;
+      document.getElementById("skill-category-input").value = tpl.category;
+      document.getElementById("skill-desc-input").value = tpl.description;
+      document.getElementById("skill-blueprint-input").value = tpl.code;
+    }
+    const rawCode = document.getElementById("skill-blueprint-input").value;
+    const discovered = extractWebAppRoutesClient(rawCode);
+    if (bannerEl) {
+      if (discovered.length > 0) {
+        bannerEl.innerHTML = `<strong style="color:#34d399;">✓ Introspected ${discovered.length} Web App Routes:</strong> ` +
+          discovered.map((r) => `<code>${r.method} ${r.path}</code>`).join(" &bull; ") +
+          ` — Compiled into <code>SKILL.md</code> + <code>mcp_server.py</code> + <code>scripts/engine.py</code>`;
+      } else {
+        bannerEl.innerHTML = `Compiled custom blueprint into <code>SKILL.md</code> + <code>mcp_server.py</code> + <code>scripts/engine.py</code>.`;
+      }
+    }
+    runCompilation();
+  }
+
+  if (webAppSelect) {
+    webAppSelect.addEventListener("change", () => {
+      if (webAppSelect.value) loadAndConvertWebApp();
+    });
+  }
+  if (convertBtn) {
+    convertBtn.addEventListener("click", loadAndConvertWebApp);
+  }
 
   renderPresetPills();
   renderRegistryCatalog();
