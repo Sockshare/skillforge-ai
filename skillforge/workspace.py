@@ -23,6 +23,14 @@ APP_CODE_EXTS = {".py", ".js", ".ts", ".jsx", ".tsx", ".html", ".json", ".yaml",
 SKIP_SCAN_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__", ".pytest_cache", "dist", "build", ".next"}
 
 
+def _tilde_path(p: Path | str) -> str:
+    s = str(p)
+    home = str(Path.home())
+    if s.startswith(home):
+        return "~" + s[len(home):]
+    return s
+
+
 def browse_pc_directory(raw_path: Optional[str] = None) -> Dict[str, Any]:
     """Browse directories and application files on the local PC."""
     if not raw_path or not raw_path.strip():
@@ -43,14 +51,13 @@ def browse_pc_directory(raw_path: Optional[str] = None) -> Dict[str, Any]:
             if child.name in SKIP_SCAN_DIRS:
                 continue
             if child.is_dir():
-                # Check if directory looks like an application (has server.py, app.py, package.json, index.html, etc.)
                 markers = [
                     m for m in ("server.py", "app.py", "main.py", "package.json", "index.html", "openapi.json", "run.sh")
                     if (child / m).exists()
                 ]
                 entries.append({
                     "name": child.name,
-                    "path": str(child),
+                    "path": _tilde_path(child),
                     "type": "directory",
                     "is_app_candidate": len(markers) > 0,
                     "app_markers": markers,
@@ -58,7 +65,7 @@ def browse_pc_directory(raw_path: Optional[str] = None) -> Dict[str, Any]:
             elif child.suffix.lower() in APP_CODE_EXTS:
                 entries.append({
                     "name": child.name,
-                    "path": str(child),
+                    "path": _tilde_path(child),
                     "type": "file",
                     "size_bytes": child.stat().st_size,
                 })
@@ -66,8 +73,8 @@ def browse_pc_directory(raw_path: Optional[str] = None) -> Dict[str, Any]:
         pass
 
     return {
-        "current_path": str(target),
-        "parent_path": str(target.parent) if target.parent != target else str(target),
+        "current_path": _tilde_path(target),
+        "parent_path": _tilde_path(target.parent if target.parent != target else target),
         "entries": entries[:120],
     }
 
@@ -86,7 +93,6 @@ def scan_pc_application_folder(target_path: str, max_files: int = 20) -> Dict[st
         app_name = p.stem
     else:
         app_name = p.name
-        # Prioritize backend/router/entry files first
         priority_names = {"server.py", "app.py", "main.py", "routes.py", "api.py", "engine.py", "index.js", "server.js", "routes.js", "openapi.json", "index.html"}
         all_candidates: List[Path] = []
         for root, dirs, files in os.walk(p):
@@ -126,7 +132,7 @@ def scan_pc_application_folder(target_path: str, max_files: int = 20) -> Dict[st
     return {
         "app_name": app_name,
         "skill_slug": slug,
-        "source_path": str(p),
+        "source_path": _tilde_path(p),
         "files_scanned": len(file_summaries),
         "file_summaries": file_summaries,
         "routes_discovered": merged_introspection["sample_input"].get("routes_discovered", []),
@@ -186,7 +192,7 @@ def list_workspace_skills() -> List[Dict[str, Any]]:
         if child.is_dir() and manifest_path.is_file():
             try:
                 data = json.loads(manifest_path.read_text(encoding="utf-8"))
-                data["skill_dir"] = str(child)
+                data["skill_dir"] = _tilde_path(child)
                 skills.append(data)
             except Exception:
                 continue
