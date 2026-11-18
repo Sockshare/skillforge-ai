@@ -28,7 +28,7 @@ def normalize_slug(raw_name: str) -> str:
 
 
 def introspect_webapp_source(raw_source: str, app_name: str = "webapp-agent-skill") -> Dict[str, Any]:
-    """Extract REST API routes, HTTP methods, and UI actions from FastAPI, Flask, Express, http.server, or HTML/JS web app code."""
+    """Extract REST API routes, HTTP methods, Python AST functions/classes, and stripped core logic from a Web App."""
     routes: List[Dict[str, str]] = []
     seen = set()
 
@@ -64,10 +64,40 @@ def introspect_webapp_source(raw_source: str, app_name: str = "webapp-agent-skil
     # 4. Frontend fetch("/api/...") calls
     for m in re.finditer(r'fetch\(\s*[\'"](/[^\'"]+)[\'"]', raw_source):
         path = m.group(1).strip()
-        key = f"POST {path}" if f"POST {path}" in seen else f"GET {path}"
         if f"GET {path}" not in seen and f"POST {path}" not in seen:
             seen.add(f"GET {path}")
             routes.append({"method": "GET", "path": path, "source": "frontend_fetch"})
+
+    # 5. Extract Python AST functions & classes (just like how web apps are stripped into standalone skill engines)
+    functions_extracted: List[Dict[str, Any]] = []
+    try:
+        tree = ast.parse(raw_source)
+        for node in tree.body:
+            if isinstance(node, ast.FunctionDef):
+                args_list = [a.arg for a in node.args.args if a.arg != "self"]
+                doc = (ast.get_docstring(node) or "Extracted web application handler/domain function.").splitlines()[0]
+                functions_extracted.append({
+                    "name": node.name,
+                    "args": args_list,
+                    "docstring": doc[:120],
+                })
+            elif isinstance(node, ast.ClassDef):
+                methods = [n.name for n in node.body if isinstance(n, ast.FunctionDef) and not n.name.startswith("_")]
+                functions_extracted.append({
+                    "name": f"class {node.name}",
+                    "args": methods[:6],
+                    "docstring": f"Extracted class with methods: {', '.join(methods[:6])}",
+                })
+    except Exception:
+        # Regex fallback for JS / mixed code
+        for m in re.finditer(r"(?:def|function|async\s+function)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)", raw_source):
+            fn_name = m.group(1)
+            fn_args = [x.strip() for x in m.group(2).split(",") if x.strip() and x.strip() != "self"]
+            functions_extracted.append({
+                "name": fn_name,
+                "args": fn_args[:6],
+                "docstring": "Extracted web application function.",
+            })
 
     if not routes:
         routes = [
@@ -99,11 +129,13 @@ def introspect_webapp_source(raw_source: str, app_name: str = "webapp-agent-skil
 
     return {
         "routes_discovered": routes,
+        "functions_extracted": functions_extracted,
         "rules": rules,
         "sample_input": {
             "webapp_name": slug,
             "environment": "production",
             "routes_discovered": [f"{r['method']} {r['path']}" for r in routes],
+            "functions_extracted": [f"{fn['name']}({', '.join(fn['args'])})" for fn in functions_extracted],
             "items": items,
         },
     }
@@ -976,9 +1008,85 @@ def evaluate_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     return report
 
 
+def write_report_suite(result: Dict[str, Any], out_dir: str) -> Dict[str, str]:
+    """Write the standardized 4-file Skill Report Suite (.json, .md, .csv, Executive_Summary.html)."""
+    import csv
+    import os
+    os.makedirs(out_dir, exist_ok=True)
+    slug = SKILL_SPEC["name"]
+
+    json_path = os.path.join(out_dir, "Canonical_Reviewed_Dataset.json")
+    with open(json_path, "w", encoding="utf-8") as fj:
+        fj.write(canonical_json(result))
+
+    csv_path = os.path.join(out_dir, f"{{slug}}_Results.csv")
+    with open(csv_path, "w", encoding="utf-8", newline="") as fc:
+        writer = csv.writer(fc)
+        writer.writerow(["Rule_ID", "Severity", "Resource", "Control", "Title", "Evidence", "Remediation"])
+        for f in result.get("findings", []):
+            writer.writerow([
+                f.get("rule_id", ""),
+                f.get("severity", ""),
+                f.get("resource", ""),
+                f.get("control", ""),
+                f.get("title", ""),
+                f.get("evidence", ""),
+                f.get("remediation", ""),
+            ])
+
+    md_lines = [
+        f"# {{SKILL_SPEC['title']}} — Deterministic Skill Assessment Report",
+        "",
+        f"- **Skill ID:** `{{result['skill_id']}}` (`v{{result['skill_version']}}`)",
+        f"- **Status:** **{{result['status']}}** (`{{result['compliance_score_pct']}}%` compliance score)",
+        f"- **Canonical Dataset SHA-256:** `{{result['determinism_sha256']}}`",
+        "",
+        "## Findings & Verification Table",
+        "",
+        "| Rule ID | Severity | Resource | Control | Title | Remediation |",
+        "| :--- | :--- | :--- | :--- | :--- | :--- |",
+    ]
+    for f in result.get("findings", []):
+        md_lines.append(
+            f"| `{{f['rule_id']}}` | **{{f['severity']}}** | `{{f['resource']}}` | `{{f['control']}}` | {{f['title']}} | {{f['remediation']}} |"
+        )
+    md_path = os.path.join(out_dir, f"{{slug}}_Report.md")
+    with open(md_path, "w", encoding="utf-8") as fm:
+        fm.write("\\n".join(md_lines) + "\\n")
+
+    rows_html = "".join(
+        f"<tr><td><code>{{f['rule_id']}}</code></td><td><strong>{{f['severity']}}</strong></td>"
+        f"<td><code>{{f['resource']}}</code></td><td>{{f['control']}}</td><td>{{f['title']}}</td><td>{{f['remediation']}}</td></tr>"
+        for f in result.get("findings", [])
+    )
+    html_path = os.path.join(out_dir, "Executive_Summary.html")
+    html_doc = (
+        "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'>"
+        f"<title>{{SKILL_SPEC['title']}} — Executive Summary</title>"
+        "<style>body{{font-family:system-ui,sans-serif;background:#0f172a;color:#f8fafc;padding:24px;}}"
+        "table{{width:100%;border-collapse:collapse;margin-top:16px;}}th,td{{border:1px solid #334155;padding:10px;text-align:left;}}"
+        "th{{background:#1e293b;color:#93c5fd;}}code{{color:#34d399;}}</style></head><body>"
+        f"<h1>{{SKILL_SPEC['title']}}</h1>"
+        f"<p><strong>Status:</strong> {{result['status']}} | <strong>Score:</strong> {{result['compliance_score_pct']}}% | "
+        f"<strong>SHA-256:</strong> <code>{{result['determinism_sha256']}}</code></p>"
+        "<table><thead><tr><th>Rule ID</th><th>Severity</th><th>Resource</th><th>Control</th><th>Title</th><th>Remediation</th></tr></thead>"
+        f"<tbody>{{rows_html}}</tbody></table></body></html>"
+    )
+    with open(html_path, "w", encoding="utf-8") as fh:
+        fh.write(html_doc)
+
+    return {{
+        "json": json_path,
+        "csv": csv_path,
+        "md": md_path,
+        "html": html_path,
+    }}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=SKILL_SPEC["description"])
     parser.add_argument("--input-file", help="Path to JSON input workload file.")
+    parser.add_argument("--out-dir", help="Directory to write the 4-file report suite (.json, .md, .csv, .html).")
     parser.add_argument("--self-test", action="store_true", help="Run built-in sample payload.")
     parser.add_argument("--verify-determinism", action="store_true", help="Run 3 times and assert identical SHA-256.")
     args = parser.parse_args()
@@ -996,6 +1104,9 @@ def main() -> int:
         return 0
 
     result = evaluate_payload(payload)
+    if args.out_dir:
+        written = write_report_suite(result, args.out_dir)
+        result["written_reports"] = written
     print(canonical_json(result))
     return 0
 
