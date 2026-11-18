@@ -104,15 +104,15 @@ def translate_webapp_with_llm(
     funcs_summary = ", ".join(introspected["sample_input"].get("functions_extracted", [])[:8])
 
     system_prompt = (
-        "You are SkillForge AI. Follow the Transformation Guide to convert the Web App "
-        "into a JSON skill definition. Return JSON only."
+        "You are SkillForge AI. Convert the Web App routes and functions into a specific JSON skill definition. "
+        "Do NOT use placeholder text; write a real description mentioning the discovered routes."
     )
     user_prompt = (
-        f"Guide: {doc_text[:450]}\n"
+        f"Transformation Guide Rules: {doc_text[:350]}\n"
         f"Discovered Web App Routes: {routes_summary}\n"
         f"Extracted Functions: {funcs_summary}\n"
-        f"Code Excerpt: {webapp_source[:350]}\n"
-        'Return JSON: {"name": "kebab-case-name", "title": "Skill Title", "category": "Web App -> LLM Skill", "description": "When and how the LLM should use this skill"}'
+        f"Code Header: {webapp_source[:280]}\n"
+        "Respond with JSON containing keys: name, title, category, description."
     )
 
     if provider in ("ollama", "ollama_local"):
@@ -137,7 +137,14 @@ def translate_webapp_with_llm(
             body = json.loads(resp.read().decode("utf-8"))
             content = (body.get("message") or {}).get("content") or ""
             parsed = _extract_json_object(content)
-            # Ensure AST-extracted routes/rules are preserved alongside LLM metadata
+            desc = (parsed.get("description") or "").strip()
+            if not desc or "when and how" in desc.lower() or len(desc) < 25:
+                parsed["description"] = (
+                    f"Deterministic LLM Agent Skill wrapping web application endpoints ({routes_summary}) "
+                    f"and extracted functions ({funcs_summary}) with 3-run SHA-256 verification."
+                )
+            if parsed.get("name") in (None, "", "web-app-name", "kebab-case-name"):
+                parsed.pop("name", None)
             parsed["rules"] = introspected["rules"]
             parsed["sample_input"] = introspected["sample_input"]
             return {
