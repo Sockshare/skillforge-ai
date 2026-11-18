@@ -33,98 +33,45 @@ Transform any selected **Application** (Python, FastAPI, Flask, Django, Node/Exp
 """
 
 
-# In-memory registry of configured LLM profiles (API keys stay in memory only, never written to git)
-LLM_PROFILES: Dict[str, Dict[str, Any]] = {
-    "ollama-primary": {
-        "id": "ollama-primary",
-        "name": "Local Ollama — Primary (llama3.2:3b)",
-        "provider": "ollama",
-        "base_url": "http://127.0.0.1:11434",
-        "model": "llama3.2:3b",
-        "role": "Primary Skill Architect",
-        "temperature": 0.0,
-        "num_ctx": 2048,
-        "has_api_key": False,
-    },
-    "local-openai-compat": {
-        "id": "local-openai-compat",
-        "name": "Local LM Studio / vLLM / llama.cpp (OpenAI-Compatible)",
-        "provider": "custom_openai",
-        "base_url": "http://127.0.0.1:1234/v1",
-        "model": "local-model",
-        "role": "Secondary Local LLM",
-        "temperature": 0.0,
-        "num_ctx": 4096,
-        "has_api_key": False,
-    },
-    "cloud-openai": {
-        "id": "cloud-openai",
-        "name": "OpenAI / OpenRouter Cloud API",
-        "provider": "openai",
-        "base_url": "https://api.openai.com/v1",
-        "model": "gpt-4o-mini",
-        "role": "Cloud Synthesis LLM",
-        "temperature": 0.0,
-        "num_ctx": 8192,
-        "has_api_key": False,
-    },
-    "cloud-gemini": {
-        "id": "cloud-gemini",
-        "name": "Google Gemini Cloud API",
-        "provider": "gemini",
-        "base_url": "https://generativelanguage.googleapis.com",
-        "model": "gemini-2.5-flash",
-        "role": "Cloud Synthesis LLM",
-        "temperature": 0.0,
-        "num_ctx": 8192,
-        "has_api_key": False,
-    },
-    "cloud-anthropic": {
-        "id": "cloud-anthropic",
-        "name": "Anthropic Claude Cloud API",
-        "provider": "anthropic",
-        "base_url": "https://api.anthropic.com/v1",
-        "model": "claude-3-7-sonnet-latest",
-        "role": "Cloud Synthesis LLM",
-        "temperature": 0.0,
-        "num_ctx": 8192,
-        "has_api_key": False,
-    },
-}
+# In-memory registry of user-added or live-discovered LLM profiles (zero hardcoded fake models)
+LLM_PROFILES: Dict[str, Dict[str, Any]] = {}
 
 # Session-only API keys (never serialized to disk)
 _SESSION_API_KEYS: Dict[str, str] = {}
 
 
 def get_ollama_status(ollama_url: str = "http://127.0.0.1:11434") -> Dict[str, Any]:
-    """Check if local Ollama server is reachable and list all installed local models."""
+    """Probe http://127.0.0.1:11434/api/tags live and register only actually installed Ollama models."""
     base = ollama_url.rstrip("/")
+    # Remove any stale auto-detected ollama-* profiles before re-probing live
+    for k in [k for k, v in LLM_PROFILES.items() if v.get("auto_detected_ollama")]:
+        LLM_PROFILES.pop(k, None)
+
     try:
         req = urllib.request.Request(f"{base}/api/tags", headers={"User-Agent": "SkillForge-AI/2.0"})
         with urllib.request.urlopen(req, timeout=2.5) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             models: List[str] = [m.get("name", "") for m in data.get("models", []) if m.get("name")]
-            # Auto-register discovered Ollama models as selectable profiles
             for idx, mname in enumerate(models):
                 pid = f"ollama-{re.sub(r'[^a-z0-9]+', '-', mname.lower()).strip('-')}"
-                if pid not in LLM_PROFILES:
-                    LLM_PROFILES[pid] = {
-                        "id": pid,
-                        "name": f"Local Ollama ({mname})",
-                        "provider": "ollama",
-                        "base_url": base,
-                        "model": mname,
-                        "role": "Primary Skill Architect" if idx == 0 else "Auxiliary Local LLM",
-                        "temperature": 0.0,
-                        "num_ctx": 2048,
-                        "has_api_key": False,
-                    }
+                LLM_PROFILES[pid] = {
+                    "id": pid,
+                    "name": f"Local Ollama — {mname}",
+                    "provider": "ollama",
+                    "base_url": base,
+                    "model": mname,
+                    "role": "Live Local Ollama Model",
+                    "temperature": 0.0,
+                    "num_ctx": 2048,
+                    "has_api_key": False,
+                    "auto_detected_ollama": True,
+                }
             return {
-                "connected": True,
+                "connected": len(models) > 0,
                 "provider": "ollama_local",
                 "endpoint": base,
                 "models": models,
-                "recommended_model": "llama3.2:3b" if "llama3.2:3b" in models else (models[0] if models else "llama3.2:3b"),
+                "recommended_model": "llama3.2:3b" if "llama3.2:3b" in models else (models[0] if models else ""),
             }
     except Exception as exc:  # noqa: BLE001
         return {
@@ -137,7 +84,7 @@ def get_ollama_status(ollama_url: str = "http://127.0.0.1:11434") -> Dict[str, A
 
 
 def list_llm_profiles() -> List[Dict[str, Any]]:
-    """Return all configured LLM profiles (without exposing raw API keys)."""
+    """Return only live-verified Ollama models and user-saved LLM profiles."""
     get_ollama_status()
     out = []
     for pid, prof in LLM_PROFILES.items():

@@ -363,26 +363,32 @@ async function loadLlmProfiles() {
       const data = await resp.json();
       llmProfiles = data.profiles || [];
       if (data.ollama && data.ollama.connected) {
-        pill.textContent = `Local Ollama Ready (${data.ollama.models.join(", ")})`;
+        pill.textContent = `Live Ollama PID Active (${data.ollama.models.join(", ")})`;
         pill.className = "badge badge-emerald";
       } else {
-        pill.textContent = `${llmProfiles.length} LLM Profiles Ready`;
+        pill.textContent = llmProfiles.length > 0 ? `${llmProfiles.length} Custom LLM(s)` : "No Local Ollama Running on :11434";
         pill.className = "badge badge-accent";
       }
     }
   } catch (_) {
-    llmProfiles = [{ id: "ollama-primary", name: "Local Ollama (llama3.2:3b)", provider: "ollama", model: "llama3.2:3b", base_url: "http://127.0.0.1:11434" }];
+    llmProfiles = [];
+    pill.textContent = "No Local LLM Connected";
+    pill.className = "badge badge-accent";
   }
 
-  selectEl.innerHTML = llmProfiles
-    .map((p) => `<option value="${p.id}">${p.name} (${p.model})</option>`)
-    .join("");
+  if (llmProfiles.length === 0) {
+    selectEl.innerHTML = `<option value="">No LLM detected — click "+ Add Another LLM" to connect</option>`;
+  } else {
+    selectEl.innerHTML = llmProfiles
+      .map((p) => `<option value="${p.id}">${p.name}</option>`)
+      .join("");
+  }
 
   const updateKeyVisibility = () => {
     const prof = llmProfiles.find((p) => p.id === selectEl.value);
     const wrap = document.getElementById("api-key-wrap");
-    if (wrap && prof) {
-      wrap.style.display = prof.provider === "openai" || prof.provider === "anthropic" || prof.provider === "gemini" ? "block" : "none";
+    if (wrap) {
+      wrap.style.display = prof && (prof.provider === "openai" || prof.provider === "anthropic" || prof.provider === "gemini") ? "block" : "none";
     }
   };
   selectEl.onchange = updateKeyVisibility;
