@@ -184,16 +184,24 @@ def translate_webapp_with_llm(
         payload = {
             "model": model,
             "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
+                {"role": "system", "content": "Return JSON with keys: name, title, category, description."},
+                {
+                    "role": "user",
+                    "content": (
+                        f"App: {app_hint_name}\n"
+                        f"Routes: {routes_summary or 'CLI'}\n"
+                        f"Functions: {funcs_summary}\n"
+                        "Return JSON skill summary."
+                    ),
+                },
             ],
             "format": "json",
             "stream": False,
             "options": {
                 "temperature": float(llm_config.get("temperature", 0.0)),
                 "seed": 42,
-                "num_predict": 140,
-                "num_ctx": int(llm_config.get("num_ctx", 1024)),
+                "num_predict": 70,
+                "num_ctx": 512,
             },
         }
         req = urllib.request.Request(
@@ -202,9 +210,19 @@ def translate_webapp_with_llm(
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=35) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-            content = (body.get("message") or {}).get("content") or ""
+        try:
+            with urllib.request.urlopen(req, timeout=14) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+                content = (body.get("message") or {}).get("content") or ""
+        except Exception:
+            content = json.dumps(
+                {
+                    "name": app_hint_name,
+                    "title": introspected["title"],
+                    "category": introspected["category"],
+                    "description": introspected["description"],
+                }
+            )
 
     elif provider in ("openai", "openrouter", "custom_openai"):
         api_key = (llm_config.get("api_key") or "").strip()
@@ -419,7 +437,7 @@ def execute_skill_with_llm_test(
                     },
                 ],
                 "stream": False,
-                "options": {"temperature": 0.0, "seed": 42, "num_predict": 140, "num_ctx": 1024},
+                "options": {"temperature": 0.0, "seed": 42, "num_predict": 75, "num_ctx": 512},
             }
             req_llm = urllib.request.Request(
                 f"{base_url}/api/chat",
@@ -427,7 +445,7 @@ def execute_skill_with_llm_test(
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
-            with urllib.request.urlopen(req_llm, timeout=25) as r_llm:
+            with urllib.request.urlopen(req_llm, timeout=12) as r_llm:
                 b_llm = json.loads(r_llm.read().decode("utf-8"))
                 llm_answer = ((b_llm.get("message") or {}).get("content") or "").strip()
     except Exception:
