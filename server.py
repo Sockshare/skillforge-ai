@@ -142,7 +142,7 @@ class SkillForgeRequestHandler(BaseHTTPRequestHandler):
                 spec_override = llm_res.get("spec_override") or {}
                 merged_payload = dict(body)
                 merged_payload["custom_override"] = True
-                for k in ("name", "title", "category", "description", "guardrails", "rules"):
+                for k in ("name", "title", "category", "description", "guardrails", "rules", "sample_input"):
                     if spec_override.get(k):
                         merged_payload[k] = spec_override[k]
                 compiled = compile_skill(merged_payload)

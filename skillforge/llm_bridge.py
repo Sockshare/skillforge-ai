@@ -93,19 +93,26 @@ def translate_webapp_with_llm(
     """Use Local Ollama or a Cloud LLM API (OpenAI / Anthropic / Gemini) to translate
     a Web Application + Transformation Documentation into a structured Skill specification.
     """
+    from skillforge.compiler import introspect_webapp_source
+
     provider = (llm_config.get("provider") or "ollama").lower()
     model = llm_config.get("model") or "llama3.2:3b"
     doc_text = (transformation_doc or DEFAULT_TRANSFORMATION_DOC).strip()
 
+    introspected = introspect_webapp_source(webapp_source, "webapp-agent-skill")
+    routes_summary = ", ".join(introspected["sample_input"].get("routes_discovered", [])[:8])
+    funcs_summary = ", ".join(introspected["sample_input"].get("functions_extracted", [])[:8])
+
     system_prompt = (
-        "You are SkillForge AI, an expert Agentic Skill Architect. "
-        "Follow the user's Transformation Documentation strictly to convert the provided Web Application "
-        "into a JSON skill specification. Respond ONLY with valid JSON."
+        "You are SkillForge AI. Follow the Transformation Guide to convert the Web App "
+        "into a JSON skill definition. Return JSON only."
     )
     user_prompt = (
-        f"=== TRANSFORMATION DOCUMENTATION ===\n{doc_text[:3500]}\n\n"
-        f"=== WEB APPLICATION SOURCE / ROUTES / BLUEPRINT ===\n{webapp_source[:4500]}\n\n"
-        "Output ONLY a valid JSON object with keys: name, title, category, description, guardrails, rules."
+        f"Guide: {doc_text[:450]}\n"
+        f"Discovered Web App Routes: {routes_summary}\n"
+        f"Extracted Functions: {funcs_summary}\n"
+        f"Code Excerpt: {webapp_source[:350]}\n"
+        'Return JSON: {"name": "kebab-case-name", "title": "Skill Title", "category": "Web App -> LLM Skill", "description": "When and how the LLM should use this skill"}'
     )
 
     if provider in ("ollama", "ollama_local"):
@@ -118,7 +125,7 @@ def translate_webapp_with_llm(
             ],
             "format": "json",
             "stream": False,
-            "options": {"temperature": 0.0, "seed": 42},
+            "options": {"temperature": 0.0, "seed": 42, "num_predict": 140, "num_ctx": 1024},
         }
         req = urllib.request.Request(
             f"{base_url}/api/chat",
@@ -126,10 +133,13 @@ def translate_webapp_with_llm(
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=25) as resp:
+        with urllib.request.urlopen(req, timeout=35) as resp:
             body = json.loads(resp.read().decode("utf-8"))
             content = (body.get("message") or {}).get("content") or ""
             parsed = _extract_json_object(content)
+            # Ensure AST-extracted routes/rules are preserved alongside LLM metadata
+            parsed["rules"] = introspected["rules"]
+            parsed["sample_input"] = introspected["sample_input"]
             return {
                 "ok": True,
                 "provider": "ollama",
