@@ -21,6 +21,7 @@ from skillforge.compiler import (
 from skillforge.llm_bridge import (
     DEFAULT_TRANSFORMATION_DOC,
     delete_llm_profile,
+    execute_skill_with_llm_test,
     get_ollama_status,
     list_llm_profiles,
     translate_webapp_with_llm,
@@ -232,6 +233,23 @@ class SkillForgeRequestHandler(BaseHTTPRequestHandler):
             skill_ctx = body.get("skill_context") if isinstance(body.get("skill_context"), dict) else None
             rpc_resp = process_mcp_jsonrpc(rpc_req, skill_context=skill_ctx)
             self._send_json(rpc_resp)
+            return
+
+        if route == "/api/skill/test-with-llm":
+            try:
+                skill_slug = body.get("skill_slug") or ""
+                user_prompt = body.get("prompt") or "Check the status and list tasks"
+                llm_config = body.get("llm_config") or {"provider": "ollama", "model": "llama3.2:3b"}
+                target_app_url = body.get("target_app_url") or "http://127.0.0.1:8110"
+                result = execute_skill_with_llm_test(
+                    skill_slug=skill_slug,
+                    user_prompt=user_prompt,
+                    llm_config=llm_config,
+                    target_app_url=target_app_url,
+                )
+                self._send_json(result)
+            except Exception as exc:  # noqa: BLE001
+                self._send_json({"error": f"Skill test execution failed: {exc}"}, status=HTTPStatus.BAD_GATEWAY)
             return
 
         if route == "/api/verify-determinism":

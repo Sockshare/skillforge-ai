@@ -126,17 +126,69 @@
         </div>
       </section>
 
-      <!-- STEP 2: CREATED SKILLS & FILE LOCATIONS -->
+      <!-- STEP 2: CREATED SKILLS, FILE LOCATIONS & TEST WITH LLM -->
       <section class="card">
         <div class="step-header">
           <span class="step-number">2</span>
           <div>
             <h2>Created Skills &amp; File Locations</h2>
-            <p class="text-muted">Every skill created below is saved on your PC and automatically active in the built-in MCP server.</p>
+            <p class="text-muted">Every skill created below is saved on your PC and can be tested immediately with your LLM.</p>
           </div>
         </div>
 
         <div id="created-skills-list" class="created-skills-list"></div>
+
+        <!-- BUILT-IN SKILL TESTER WITH LLM -->
+        <div class="skill-tester-box" style="margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border);">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px;">
+            <div>
+              <h3 style="font-size: 1rem; margin: 0;">💬 Test Created Skill with Your LLM</h3>
+              <p class="text-muted small-text" style="margin: 2px 0 0 0;">Ask your LLM to use the created skill against a live application (e.g. TaskPulse on <code>http://127.0.0.1:8110</code>).</p>
+            </div>
+          </div>
+
+          <div class="llm-row" style="margin-top: 8px;">
+            <div style="flex: 1; min-width: 180px;">
+              <label for="test-skill-select">Skill to Test</label>
+              <select id="test-skill-select" class="input-control"></select>
+            </div>
+            <div style="flex: 1; min-width: 180px;">
+              <label for="test-target-url">Target App URL (Optional)</label>
+              <input id="test-target-url" type="text" class="input-control" value="http://127.0.0.1:8110" />
+            </div>
+          </div>
+
+          <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px;">
+            <button type="button" class="btn btn-secondary btn-sm quick-test-prompt" data-prompt="List all tasks in the application">
+              📋 List all tasks
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm quick-test-prompt" data-prompt="Add a HIGH priority task called 'Deploy Skill to Production' owned by Alex">
+              ➕ Add a new task in the app
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm quick-test-prompt" data-prompt="Calculate budget for 40 hours at $150/hr">
+              💰 Calculate budget (40h @ $150/hr)
+            </button>
+          </div>
+
+          <div style="display: flex; gap: 8px; margin-top: 10px;">
+            <input id="test-skill-prompt" type="text" class="input-control" value="List all tasks in the application" placeholder="Ask your LLM to perform an action using the skill..." />
+            <button id="btn-run-skill-test" type="button" class="btn btn-primary" style="white-space: nowrap;">
+              ▶ Test Skill with LLM
+            </button>
+          </div>
+
+          <div id="skill-test-result" class="location-box" style="display: none; margin-top: 12px; flex-direction: column; align-items: stretch; gap: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
+              <strong id="test-result-tool" style="color: var(--emerald); font-size: 0.86rem;"></strong>
+              <span id="test-result-model" class="badge badge-emerald"></span>
+            </div>
+            <div id="test-result-answer" style="font-size: 0.92rem; line-height: 1.5; background: rgba(15, 23, 42, 0.7); padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);"></div>
+            <details>
+              <summary class="text-muted small-text" style="cursor: pointer;">View Raw Skill Tool Output JSON</summary>
+              <pre id="test-result-json" class="code-viewer" style="max-height: 180px; margin-top: 6px;"></pre>
+            </details>
+          </div>
+        </div>
       </section>
     </div>
   </main>

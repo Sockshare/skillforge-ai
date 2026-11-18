@@ -230,13 +230,27 @@ async function loadCreatedSkills() {
     }
   } catch (_) {}
 
+  const testSelectEl = document.getElementById("test-skill-select");
   if (!workspaceSkills || workspaceSkills.length === 0) {
+    if (testSelectEl) {
+      testSelectEl.innerHTML = `<option value="">Convert an app on the left first</option>`;
+    }
     listEl.innerHTML = `
       <div class="skill-card">
         <div class="text-muted">No skills created yet. Select any application on your PC on the left and click <strong>✨ Convert Application into LLM Skill</strong>.</div>
       </div>
     `;
     return;
+  }
+
+  if (testSelectEl) {
+    const prevVal = testSelectEl.value;
+    testSelectEl.innerHTML = workspaceSkills
+      .map((s) => `<option value="${s.name}">${s.title || s.name} (${s.name})</option>`)
+      .join("");
+    if (prevVal && workspaceSkills.some((s) => s.name === prevVal)) {
+      testSelectEl.value = prevVal;
+    }
   }
 
   listEl.innerHTML = workspaceSkills
@@ -272,10 +286,13 @@ async function loadCreatedSkills() {
           </div>
 
           <div class="skill-actions-row">
+            <button type="button" class="btn btn-primary btn-sm test-this-skill-btn" data-slug="${s.name}">
+              💬 Test with LLM
+            </button>
             <button type="button" class="btn btn-secondary btn-sm preview-skill-btn" data-slug="${s.name}">
               👁️ View SKILL.md
             </button>
-            <button type="button" class="btn btn-primary btn-sm download-zip-btn" data-slug="${s.name}">
+            <button type="button" class="btn btn-secondary btn-sm download-zip-btn" data-slug="${s.name}">
               📦 Download .zip
             </button>
             <button type="button" class="btn btn-secondary btn-sm delete-skill-btn" data-slug="${s.name}">
@@ -286,6 +303,13 @@ async function loadCreatedSkills() {
       `;
     })
     .join("");
+
+  listEl.querySelectorAll(".test-this-skill-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (testSelectEl) testSelectEl.value = btn.dataset.slug;
+      runSkillTestWithLlm();
+    });
+  });
 
   listEl.querySelectorAll(".copy-path-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -352,7 +376,74 @@ async function loadCreatedSkills() {
 }
 
 // ============================================================================
-// 4. LLM CONNECTION MANAGER
+// 4. BUILT-IN TEST SKILL WITH LLM
+// ============================================================================
+async function runSkillTestWithLlm() {
+  const testSelectEl = document.getElementById("test-skill-select");
+  const skillSlug = (testSelectEl && testSelectEl.value) || (workspaceSkills[0] && workspaceSkills[0].name) || "";
+  const promptInput = document.getElementById("test-skill-prompt");
+  const prompt = (promptInput && promptInput.value.trim()) || "List all tasks in the application";
+  const targetUrl = (document.getElementById("test-target-url") && document.getElementById("test-target-url").value.trim()) || "http://127.0.0.1:8110";
+  const btn = document.getElementById("btn-run-skill-test");
+  const resBox = document.getElementById("skill-test-result");
+  const toolEl = document.getElementById("test-result-tool");
+  const modelEl = document.getElementById("test-result-model");
+  const ansEl = document.getElementById("test-result-answer");
+  const jsonEl = document.getElementById("test-result-json");
+
+  if (!skillSlug) {
+    resBox.style.display = "flex";
+    toolEl.textContent = "No skill selected";
+    ansEl.textContent = "Convert an application on the left first so you have a skill to test.";
+    return;
+  }
+
+  const selectEl = document.getElementById("llm-profile-select");
+  const prof = (selectEl && llmProfiles.find((p) => p.id === selectEl.value)) || llmProfiles[0] || { provider: "ollama", model: "llama3.2:3b", base_url: "http://127.0.0.1:11434" };
+  const apiKey = document.getElementById("llm-apikey-input").value.trim();
+
+  btn.disabled = true;
+  btn.textContent = "⏳ Running Skill with LLM...";
+  resBox.style.display = "flex";
+  toolEl.textContent = `Invoking skill "${skillSlug}"...`;
+  modelEl.textContent = `${prof.provider}:${prof.model}`;
+  ansEl.textContent = "Calling skill tool and summarizing response with LLM...";
+
+  try {
+    const resp = await fetch("/api/skill/test-with-llm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        skill_slug: skillSlug,
+        prompt: prompt,
+        target_app_url: targetUrl,
+        llm_config: {
+          profile_id: prof.id,
+          provider: prof.provider,
+          model: prof.model,
+          base_url: prof.base_url,
+          api_key: apiKey
+        }
+      })
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || "Skill test failed");
+
+    toolEl.textContent = `✓ Skill Tool Invoked: ${data.invoked_tool} → ${data.executed_against}`;
+    modelEl.textContent = `LLM: ${data.llm_provider} (${data.llm_model})`;
+    ansEl.textContent = data.llm_answer || "Skill executed.";
+    jsonEl.textContent = JSON.stringify(data.tool_output, null, 2);
+  } catch (err) {
+    toolEl.textContent = "Skill Test Error";
+    ansEl.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "▶ Test Skill with LLM";
+  }
+}
+
+// ============================================================================
+// 5. LLM CONNECTION MANAGER
 // ============================================================================
 async function loadLlmProfiles() {
   const selectEl = document.getElementById("llm-profile-select");
@@ -435,6 +526,14 @@ function initApp() {
   });
 
   document.getElementById("btn-convert-skill").addEventListener("click", convertApplicationToSkill);
+  document.getElementById("btn-run-skill-test").addEventListener("click", runSkillTestWithLlm);
+
+  document.querySelectorAll(".quick-test-prompt").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.getElementById("test-skill-prompt").value = btn.dataset.prompt;
+      runSkillTestWithLlm();
+    });
+  });
 
   document.getElementById("btn-copy-mcp-cmd").addEventListener("click", () => {
     const cfg = mcpClientConfigs ? mcpClientConfigs.claude_desktop_config : {

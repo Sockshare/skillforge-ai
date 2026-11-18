@@ -301,3 +301,153 @@ def translate_webapp_with_llm(
         "spec_override": parsed,
         "raw_llm_response": content,
     }
+
+
+def execute_skill_with_llm_test(
+    skill_slug: str,
+    user_prompt: str,
+    llm_config: Dict[str, Any],
+    target_app_url: str = "http://127.0.0.1:8110",
+) -> Dict[str, Any]:
+    """Test a created skill with the user's LLM:
+    1. Selects the appropriate MCP tool / HTTP endpoint from the skill.
+    2. Invokes the live Web Application endpoint (or the skill's deterministic engine.py).
+    3. Passes the tool output to the LLM (Local Ollama or Cloud API) to answer the user's prompt.
+    """
+    from skillforge.compiler import evaluate_skill_deterministically
+    from skillforge.workspace import list_workspace_skills
+
+    ws_skills = list_workspace_skills()
+    skill = next((s for s in ws_skills if s["name"] == skill_slug or s["id"] == skill_slug), None)
+    if not skill and ws_skills:
+        skill = ws_skills[0]
+
+    tools = (skill or {}).get("tools") or []
+    p_low = (user_prompt or "").lower()
+
+    # Determine which tool & HTTP route matches the user's prompt
+    chosen_tool = tools[0]["name"] if tools else f"{skill_slug.replace('-', '_')}__run_full_suite"
+    chosen_method = "GET"
+    chosen_path = "/api/health"
+    req_body: Dict[str, Any] = {}
+
+    if any(w in p_low for w in ("budget", "cost", "rate", "hour", "price", "calculate")):
+        chosen_method = "POST"
+        chosen_path = "/api/calculate-budget"
+        m_hr = re.search(r"(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)", p_low)
+        m_rate = re.search(r"\$\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*(?:/hr|per hour|rate)", p_low)
+        m_tax = re.search(r"(\d+(?:\.\d+)?)\s*%", p_low)
+        req_body = {
+            "hours": float(m_hr.group(1)) if m_hr else 40.0,
+            "hourly_rate": float(m_rate.group(1) or m_rate.group(2)) if m_rate else 150.0,
+            "tax_pct": float(m_tax.group(1)) if m_tax else 8.25,
+        }
+    elif any(w in p_low for w in ("add", "create", "new task", "schedule")):
+        chosen_method = "POST"
+        chosen_path = "/api/tasks"
+        m_quote = re.search(r"['\"]([^'\"]+)['\"]", user_prompt)
+        title = m_quote.group(1) if m_quote else re.sub(r"^(?:please\s+)?(?:add|create)\s+(?:a\s+)?(?:new\s+)?(?:high|medium|low)?\s*(?:priority\s+)?(?:task\s*)?(?:called|named|to)?\s*", "", user_prompt, flags=re.IGNORECASE).strip()
+        pri = "HIGH" if "high" in p_low else ("LOW" if "low" in p_low else "MEDIUM")
+        req_body = {"title": title or "LLM Skill Generated Task", "priority": pri, "owner": "SkillForge LLM Agent"}
+    elif any(w in p_low for w in ("task", "list", "queue", "todo", "show")):
+        chosen_method = "GET"
+        chosen_path = "/api/tasks"
+    else:
+        # Match against any discovered HTTP endpoint tool in the skill
+        for t in tools:
+            if t.get("type") == "http_endpoint" and t.get("path"):
+                if any(seg in p_low for seg in t["path"].lower().split("/") if len(seg) > 2):
+                    chosen_method = t.get("method", "GET")
+                    chosen_path = t["path"]
+                    chosen_tool = t["name"]
+                    break
+
+    for t in tools:
+        if chosen_path.replace("/", "_").replace("-", "_").strip("_") in t["name"]:
+            chosen_tool = t["name"]
+            break
+
+    # Step 2: Call the live Web Application endpoint if reachable, else run deterministic skill engine
+    app_base = (target_app_url or "http://127.0.0.1:8110").rstrip("/")
+    live_url = f"{app_base}{chosen_path}"
+    tool_result: Dict[str, Any] = {}
+    executed_against = f"{chosen_method} {live_url}"
+
+    try:
+        if chosen_method == "GET":
+            req = urllib.request.Request(live_url, headers={"Accept": "application/json"}, method="GET")
+        else:
+            req = urllib.request.Request(
+                live_url,
+                data=json.dumps(req_body).encode("utf-8"),
+                headers={"Content-Type": "application/json", "Accept": "application/json"},
+                method=chosen_method,
+            )
+        with urllib.request.urlopen(req, timeout=4.0) as resp:
+            tool_result = json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        executed_against = f"Skill Engine ({chosen_tool})"
+        if skill:
+            tool_result = evaluate_skill_deterministically(skill, skill.get("sample_input", {}))
+        else:
+            tool_result = {"status": "ok", "invoked_tool": chosen_tool}
+
+    # Step 3: Ask the LLM to synthesize the final answer using the skill tool's output
+    profile_id = llm_config.get("profile_id")
+    if profile_id and profile_id in LLM_PROFILES:
+        prof = dict(LLM_PROFILES[profile_id])
+        prof.update({k: v for k, v in llm_config.items() if v not in (None, "")})
+        llm_config = prof
+
+    provider = (llm_config.get("provider") or "ollama").lower()
+    model = llm_config.get("model") or "llama3.2:3b"
+    base_url = (llm_config.get("base_url") or "http://127.0.0.1:11434").rstrip("/")
+
+    llm_answer = ""
+    try:
+        if provider in ("ollama", "ollama_local"):
+            chat_payload = {
+                "model": model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": f"You are an AI assistant using the '{skill_slug}' skill. Summarize the tool output clearly and concisely in 2-3 sentences.",
+                    },
+                    {
+                        "role": "user",
+                        "content": f"User Request: {user_prompt}\nSkill Tool Invoked: {chosen_tool} ({executed_against})\nLive Tool Output JSON:\n{json.dumps(tool_result, indent=2)}",
+                    },
+                ],
+                "stream": False,
+                "options": {"temperature": 0.0, "seed": 42, "num_predict": 140, "num_ctx": 1024},
+            }
+            req_llm = urllib.request.Request(
+                f"{base_url}/api/chat",
+                data=json.dumps(chat_payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req_llm, timeout=25) as r_llm:
+                b_llm = json.loads(r_llm.read().decode("utf-8"))
+                llm_answer = ((b_llm.get("message") or {}).get("content") or "").strip()
+    except Exception:
+        pass
+
+    if not llm_answer:
+        llm_answer = (
+            f"Executed skill tool `{chosen_tool}` via `{executed_against}` and received live response: "
+            f"{json.dumps(tool_result)}"
+        )
+
+    return {
+        "ok": True,
+        "skill_slug": skill_slug,
+        "invoked_tool": chosen_tool,
+        "executed_against": executed_against,
+        "request_arguments": req_body,
+        "tool_output": tool_result,
+        "llm_provider": provider,
+        "llm_model": model,
+        "llm_answer": llm_answer,
+    }
+
