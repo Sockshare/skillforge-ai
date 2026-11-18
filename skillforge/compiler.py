@@ -106,9 +106,20 @@ def introspect_webapp_source(raw_source: str, app_name: str = "webapp-agent-skil
         ]
 
     slug = normalize_slug(app_name)
+    slug_fn = slug.replace("-", "_")
     rules = []
     items = []
-    for idx, rt in enumerate(routes[:6], start=1):
+    tools: List[Dict[str, Any]] = [
+        {
+            "name": f"{slug_fn}__run_full_suite",
+            "type": "suite_runner",
+            "description": f"Execute the full deterministic verification and 4-file report suite for {slug}.",
+            "endpoint_or_fn": "evaluate_payload",
+        }
+    ]
+    seen_tools = {tools[0]["name"]}
+
+    for idx, rt in enumerate(routes[:10], start=1):
         rid = f"WEBAPP-{idx:03d}"
         rules.append({
             "rule_id": rid,
@@ -126,16 +137,44 @@ def introspect_webapp_source(raw_source: str, app_name: str = "webapp-agent-skil
             "missing_tags": False,
             "detail": f"Bridged web app endpoint ({rt['source']}) for LLM tool invocation",
         })
+        route_slug = re.sub(r"[^a-z0-9]+", "_", f"{rt['method'].lower()}_{rt['path'].lower()}").strip("_")
+        tname = f"{slug_fn}__{route_slug}"
+        if tname not in seen_tools:
+            seen_tools.add(tname)
+            tools.append({
+                "name": tname,
+                "type": "http_endpoint",
+                "method": rt["method"],
+                "path": rt["path"],
+                "description": f"Invoke web application endpoint {rt['method']} {rt['path']} deterministically.",
+                "endpoint_or_fn": f"{rt['method']} {rt['path']}",
+            })
+
+    for fn in functions_extracted[:10]:
+        raw_fn_name = fn["name"].replace("class ", "cls_")
+        fn_slug = re.sub(r"[^a-z0-9]+", "_", raw_fn_name.lower()).strip("_")
+        tname = f"{slug_fn}__fn_{fn_slug}"
+        if tname not in seen_tools:
+            seen_tools.add(tname)
+            tools.append({
+                "name": tname,
+                "type": "extracted_function",
+                "args": fn.get("args", []),
+                "description": f"{fn.get('docstring', 'Extracted function')} ({fn['name']}({', '.join(fn.get('args', []))}))",
+                "endpoint_or_fn": fn["name"],
+            })
 
     return {
         "routes_discovered": routes,
         "functions_extracted": functions_extracted,
+        "tools": tools,
         "rules": rules,
         "sample_input": {
             "webapp_name": slug,
             "environment": "production",
             "routes_discovered": [f"{r['method']} {r['path']}" for r in routes],
             "functions_extracted": [f"{fn['name']}({', '.join(fn['args'])})" for fn in functions_extracted],
+            "tools_count": len(tools),
             "items": items,
         },
     }
@@ -146,15 +185,25 @@ def parse_blueprint_or_preset(payload: Dict[str, Any]) -> Dict[str, Any]:
     preset_id = payload.get("preset_id")
     if preset_id and preset_id in PRESETS and not payload.get("custom_override"):
         spec = json.loads(json.dumps(get_preset(preset_id)))
+        slug_fn = spec["id"].replace("-", "_")
+        spec.setdefault("tools", [
+            {
+                "name": slug_fn,
+                "type": "suite_runner",
+                "description": spec["description"],
+                "endpoint_or_fn": "evaluate_payload",
+            }
+        ])
     else:
         raw_name = payload.get("name") or payload.get("title") or "custom-workflow-verifier"
         slug = normalize_slug(raw_name)
         raw_blueprint = (payload.get("blueprint") or "").strip()
         description = payload.get("description") or (
-            f"Deterministic LLM Agent Skill and MCP tool bridge for {slug}. "
-            "Use when an LLM needs to invoke web application endpoints, validate API payloads, or automate workflows."
+            f"Deterministic LLM Agent Skill and Multi-Tool MCP bridge for {slug}. "
+            "Use when an LLM needs to invoke application endpoints, call extracted functions, or generate verified reports."
         )
         extracted_rules: List[Dict[str, Any]] = payload.get("rules") or []
+        extracted_tools: List[Dict[str, Any]] = payload.get("tools") or []
         sample_input: Dict[str, Any] = payload.get("sample_input") or {}
         if raw_blueprint and not extracted_rules:
             try:
@@ -189,11 +238,14 @@ def parse_blueprint_or_preset(payload: Dict[str, Any]) -> Dict[str, Any]:
                         ],
                     }
             except json.JSONDecodeError:
-                # Check if raw_blueprint contains Web App source code (FastAPI/Flask/Express/http.server/fetch)
-                if any(tok in raw_blueprint for tok in ("@app.", "app.get(", "app.post(", "path ==", "fetch(", "/api/")):
-                    introspected = introspect_webapp_source(raw_blueprint, slug)
-                    extracted_rules = introspected["rules"]
-                    sample_input = introspected["sample_input"]
+                introspected = introspect_webapp_source(raw_blueprint, slug)
+                extracted_rules = introspected["rules"]
+                extracted_tools = introspected["tools"]
+                sample_input = introspected["sample_input"]
+
+        if not extracted_tools and raw_blueprint:
+            introspected = introspect_webapp_source(raw_blueprint, slug)
+            extracted_tools = introspected["tools"]
 
         if not extracted_rules:
             extracted_rules = [
@@ -235,22 +287,34 @@ def parse_blueprint_or_preset(payload: Dict[str, Any]) -> Dict[str, Any]:
                 ],
             }
 
+        if not extracted_tools:
+            slug_fn = slug.replace("-", "_")
+            extracted_tools = [
+                {
+                    "name": f"{slug_fn}__run_full_suite",
+                    "type": "suite_runner",
+                    "description": description,
+                    "endpoint_or_fn": "evaluate_payload",
+                }
+            ]
+
         spec = {
             "id": slug,
             "name": slug,
             "title": payload.get("title") or slug.replace("-", " ").title(),
-            "category": payload.get("category") or "Custom Agent Skill",
+            "category": payload.get("category") or "Application Skill",
             "version": payload.get("version") or "1.0.0",
             "description": description,
             "frameworks": payload.get("frameworks") or ["Open Agent SKILL.md", "MCP JSON-RPC 2.0", "SOC 2 CC6/CC7"],
             "input_type": payload.get("input_type") or "custom_workload_bundle",
-            "cli_flags": payload.get("cli_flags") or ["--input-file", "--strict", "--output-format"],
+            "cli_flags": payload.get("cli_flags") or ["--input-file", "--out-dir", "--verify-determinism"],
             "guardrails": payload.get("guardrails")
             or [
                 "Read-only deterministic evaluation; never performs destructive state mutations without explicit approval.",
                 "All outputs are canonically sorted and signed with a SHA-256 verification hash.",
                 "Validates input payload against JSON Schema Draft 2020-12 prior to execution.",
             ],
+            "tools": extracted_tools,
             "rules": extracted_rules,
             "sample_input": sample_input,
         }
@@ -725,8 +789,8 @@ def build_json_schema(spec: Dict[str, Any]) -> Dict[str, Any]:
         "properties": {
             "payload": {
                 "type": "object",
-                "description": f"Structured input workload for {skill_id} ({spec['input_type']}).",
-                "default": spec["sample_input"],
+                "description": f"Structured input workload for {skill_id} ({spec.get('input_type', 'workload_bundle')}).",
+                "default": spec.get("sample_input", {}),
             },
             "strict_mode": {
                 "type": "boolean",
@@ -1154,30 +1218,39 @@ def handle_jsonrpc(request: Dict[str, Any]) -> Dict[str, Any]:
             }},
         }}
     if method == "tools/list":
+        skill_tools = SKILL_SPEC.get("tools") or [
+            {{"name": "{tool_fn}", "description": SKILL_SPEC["description"]}}
+        ]
         return {{
             "jsonrpc": "2.0",
             "id": req_id,
             "result": {{
                 "tools": [
                     {{
-                        "name": "{tool_fn}",
-                        "description": SKILL_SPEC["description"],
+                        "name": t["name"],
+                        "description": t.get("description", SKILL_SPEC["description"]),
                         "inputSchema": INPUT_SCHEMA,
                     }}
+                    for t in skill_tools
                 ]
             }},
         }}
     if method == "tools/call":
+        tool_called = params.get("name", "{tool_fn}")
         args = params.get("arguments") or {{}}
         payload = args.get("payload") or SKILL_SPEC["sample_input"]
         evaluation = evaluate_payload(payload)
+        evaluation["invoked_tool"] = tool_called
         return {{
             "jsonrpc": "2.0",
             "id": req_id,
             "result": {{
                 "content": [{{"type": "text", "text": canonical_json(evaluation)}}],
                 "isError": False,
-                "meta": {{"determinism_sha256": evaluation["determinism_sha256"]}},
+                "meta": {{
+                    "invoked_tool": tool_called,
+                    "determinism_sha256": evaluation["determinism_sha256"],
+                }},
             }},
         }}
     return {{

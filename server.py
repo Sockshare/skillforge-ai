@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""SkillForge AI — Zero-Dependency HTTP Server & REST API."""
+"""SkillForge AI — Zero-Dependency HTTP Server & Multi-Skill / Multi-LLM REST API."""
 
 import argparse
-import mimetypes
 import json
+import mimetypes
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from mcp_server import process_mcp_jsonrpc
 from skillforge import __version__
@@ -20,10 +20,21 @@ from skillforge.compiler import (
 )
 from skillforge.llm_bridge import (
     DEFAULT_TRANSFORMATION_DOC,
+    delete_llm_profile,
     get_ollama_status,
+    list_llm_profiles,
     translate_webapp_with_llm,
+    upsert_llm_profile,
 )
 from skillforge.presets import list_presets
+from skillforge.workspace import (
+    browse_pc_directory,
+    delete_workspace_skill,
+    get_mcp_client_configs,
+    list_workspace_skills,
+    save_skill_to_workspace,
+    scan_pc_application_folder,
+)
 
 ROOT_DIR = Path(__file__).resolve().parent
 
@@ -42,7 +53,7 @@ class SkillForgeRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(raw)))
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
         self.wfile.write(raw)
@@ -57,22 +68,25 @@ class SkillForgeRequestHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self) -> None:  # noqa: N802
         self.send_response(HTTPStatus.NO_CONTENT)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
 
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         route = parsed.path
+        qs = parse_qs(parsed.query)
 
         if route == "/api/health":
             ollama = get_ollama_status()
+            ws_skills = list_workspace_skills()
             self._send_json(
                 {
                     "status": "ok",
                     "service": "skillforge-ai",
                     "version": __version__,
                     "presets_available": len(list_presets()),
+                    "installed_workspace_skills": len(ws_skills),
                     "mcp_protocol_version": "2024-11-05",
                     "ollama_connected": ollama["connected"],
                     "ollama_models": ollama["models"],
@@ -80,20 +94,41 @@ class SkillForgeRequestHandler(BaseHTTPRequestHandler):
             )
             return
 
+        if route == "/api/fs/browse":
+            raw_path = qs.get("path", [None])[0]
+            self._send_json(browse_pc_directory(raw_path))
+            return
+
         if route == "/api/llm/status":
             ollama = get_ollama_status()
             self._send_json(
                 {
                     "ollama": ollama,
+                    "profiles": list_llm_profiles(),
                     "default_transformation_doc": DEFAULT_TRANSFORMATION_DOC,
-                    "supported_providers": [
-                        {"id": "ollama", "label": "Local Ollama (http://127.0.0.1:11434)"},
-                        {"id": "openai", "label": "OpenAI / OpenRouter Compatible API"},
-                        {"id": "gemini", "label": "Google Gemini Cloud API"},
-                        {"id": "deterministic_ast", "label": "Deterministic AST Route & Schema Introspector (Offline)"},
-                    ],
                 }
             )
+            return
+
+        if route == "/api/llm/profiles":
+            self._send_json({"profiles": list_llm_profiles()})
+            return
+
+        if route == "/api/workspace/skills":
+            skills = list_workspace_skills()
+            total_tools = sum(len(s.get("tools", [])) for s in skills)
+            self._send_json(
+                {
+                    "skills": skills,
+                    "skills_count": len(skills),
+                    "total_tools_count": total_tools,
+                }
+            )
+            return
+
+        if route == "/api/mcp/configs":
+            port = self.server.server_port if hasattr(self.server, "server_port") else 8108
+            self._send_json(get_mcp_client_configs(port))
             return
 
         if route == "/api/presets":
@@ -133,19 +168,36 @@ class SkillForgeRequestHandler(BaseHTTPRequestHandler):
             self._send_json({"error": f"Invalid JSON payload: {exc}"}, status=HTTPStatus.BAD_REQUEST)
             return
 
+        if route == "/api/fs/scan-app":
+            try:
+                app_path = body.get("path") or ""
+                scan_result = scan_pc_application_folder(app_path)
+                self._send_json(scan_result)
+            except Exception as exc:  # noqa: BLE001
+                self._send_json({"error": f"Failed to scan PC application: {exc}"}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        if route == "/api/llm/profiles":
+            prof = upsert_llm_profile(body)
+            self._send_json({"profile": prof, "profiles": list_llm_profiles()})
+            return
+
         if route == "/api/llm/translate":
             try:
                 webapp_source = body.get("webapp_source") or body.get("blueprint") or ""
                 transformation_doc = body.get("transformation_doc") or DEFAULT_TRANSFORMATION_DOC
                 llm_config = body.get("llm_config") or {"provider": "ollama", "model": "llama3.2:3b"}
-                llm_res = translate_webapp_with_llm(webapp_source, transformation_doc, llm_config)
+                app_hint = body.get("name") or "custom-webapp-skill"
+                llm_res = translate_webapp_with_llm(webapp_source, transformation_doc, llm_config, app_hint_name=app_hint)
                 spec_override = llm_res.get("spec_override") or {}
                 merged_payload = dict(body)
                 merged_payload["custom_override"] = True
-                for k in ("name", "title", "category", "description", "guardrails", "rules", "sample_input"):
+                for k in ("name", "title", "category", "description", "guardrails", "rules", "tools", "sample_input"):
                     if spec_override.get(k):
                         merged_payload[k] = spec_override[k]
                 compiled = compile_skill(merged_payload)
+                if body.get("install_to_workspace", True):
+                    save_skill_to_workspace(compiled)
                 compiled["llm_translation"] = {
                     "provider": llm_res["provider"],
                     "model": llm_res["model"],
@@ -159,7 +211,20 @@ class SkillForgeRequestHandler(BaseHTTPRequestHandler):
 
         if route == "/api/compile":
             compiled = compile_skill(body)
+            if body.get("install_to_workspace", True):
+                save_skill_to_workspace(compiled)
             self._send_json(compiled)
+            return
+
+        if route == "/api/workspace/skills":
+            compiled = compile_skill(body)
+            manifest = save_skill_to_workspace(compiled)
+            self._send_json({"installed": manifest, "skills": list_workspace_skills()})
+            return
+
+        if route == "/api/workspace/delete":
+            removed = delete_workspace_skill(body.get("id") or body.get("name") or "")
+            self._send_json({"deleted": removed, "skills": list_workspace_skills()})
             return
 
         if route == "/api/mcp/rpc":
@@ -205,26 +270,45 @@ class SkillForgeRequestHandler(BaseHTTPRequestHandler):
 
         self._send_json({"error": f"Unknown endpoint: {route}"}, status=HTTPStatus.NOT_FOUND)
 
+    def do_DELETE(self) -> None:  # noqa: N802
+        parsed = urlparse(self.path)
+        route = parsed.path
+        qs = parse_qs(parsed.query)
+        if route == "/api/llm/profiles":
+            pid = qs.get("id", [""])[0]
+            removed = delete_llm_profile(pid)
+            self._send_json({"deleted": removed, "profiles": list_llm_profiles()})
+            return
+        if route == "/api/workspace/skills":
+            sid = qs.get("id", [""])[0]
+            removed = delete_workspace_skill(sid)
+            self._send_json({"deleted": removed, "skills": list_workspace_skills()})
+            return
+        self._send_json({"error": f"Unknown DELETE endpoint: {route}"}, status=HTTPStatus.NOT_FOUND)
 
-def create_server(host: str = "127.0.0.1", port: int = 8091) -> ThreadingHTTPServer:
-    """Instantiate a ThreadingHTTPServer bound to host:port."""
+
+def create_server(host: str = "127.0.0.1", port: int = 8108) -> ThreadingHTTPServer:
+    """Create and return a configured ThreadingHTTPServer instance."""
     return ThreadingHTTPServer((host, port), SkillForgeRequestHandler)
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="SkillForge AI Web Studio Server")
-    parser.add_argument("--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1)")
-    parser.add_argument("--port", type=int, default=8091, help="TCP port (default: 8091)")
-    args = parser.parse_args()
-
-    httpd = create_server(args.host, args.port)
-    print(f"SkillForge AI Studio listening on http://{args.host}:{args.port}")
+def run_server(host: str = "127.0.0.1", port: int = 8108) -> None:
+    server = create_server(host, port)
+    print(f"SkillForge AI Studio listening on http://{host}:{port}")
     try:
-        httpd.serve_forever()
+        server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
-        httpd.server_close()
+        server.server_close()
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="SkillForge AI Web Server & REST API")
+    parser.add_argument("--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1)")
+    parser.add_argument("--port", type=int, default=8108, help="Bind port (default: 8108)")
+    args = parser.parse_args()
+    run_server(host=args.host, port=args.port)
     return 0
 
 

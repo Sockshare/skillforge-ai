@@ -208,9 +208,87 @@ class TestMcpServerAndHttpApi(unittest.TestCase):
                 det_data = json.loads(resp.read().decode("utf-8"))
                 self.assertTrue(det_data["deterministic"])
                 self.assertEqual(det_data["run_1_sha256"], det_data["run_3_sha256"])
+
+            with urllib.request.urlopen(f"{base_url}/api/mcp/configs") as resp:
+                cfgs = json.loads(resp.read().decode("utf-8"))
+                self.assertIn("claude_desktop_config", cfgs)
+                self.assertIn("cursor_mcp_config", cfgs)
         finally:
             httpd.shutdown()
             httpd.server_close()
+
+    def test_pc_application_scan_and_multi_tool_extraction(self) -> None:
+        from skillforge.workspace import scan_pc_application_folder
+
+        with tempfile.TemporaryDirectory() as tmp:
+            app_dir = Path(tmp) / "inventory-billing-app"
+            app_dir.mkdir()
+            (app_dir / "server.py").write_text(
+                'from fastapi import FastAPI\napp = FastAPI()\n\n'
+                '@app.get("/api/invoices")\ndef list_invoices(customer_id: str):\n    return []\n\n'
+                '@app.post("/api/invoices/pay")\ndef pay_invoice(invoice_id: str, amount: float):\n    return {"paid": True}\n',
+                encoding="utf-8",
+            )
+            scan_res = scan_pc_application_folder(str(app_dir))
+            self.assertEqual(scan_res["app_name"], "inventory-billing-app")
+            self.assertGreaterEqual(len(scan_res["routes_discovered"]), 2)
+            self.assertGreaterEqual(len(scan_res["functions_extracted"]), 2)
+            # Should have suite_runner + 2 HTTP route tools + 2 extracted function tools = 5 tools
+            self.assertGreaterEqual(len(scan_res["tools_discovered"]), 5)
+
+    def test_multi_skill_mcp_hub_and_multi_llm_profiles(self) -> None:
+        from skillforge.llm_bridge import delete_llm_profile, list_llm_profiles, upsert_llm_profile
+        from skillforge.workspace import delete_workspace_skill, list_workspace_skills, save_skill_to_workspace
+
+        prof = upsert_llm_profile(
+            {
+                "id": "test-local-vllm",
+                "name": "Local vLLM Test Profile",
+                "provider": "custom_openai",
+                "base_url": "http://127.0.0.1:8000/v1",
+                "model": "qwen2.5-coder-7b",
+            }
+        )
+        self.assertEqual(prof["id"], "test-local-vllm")
+        self.assertTrue(any(p["id"] == "test-local-vllm" for p in list_llm_profiles()))
+        delete_llm_profile("test-local-vllm")
+
+        # Compile and install two distinct multi-tool skills into the MCP workspace
+        s1 = compile_skill(
+            {
+                "name": "order-tracker-app-skill",
+                "custom_override": True,
+                "blueprint": '@app.get("/api/orders")\ndef get_orders(): pass\n@app.post("/api/orders/cancel")\ndef cancel_order(): pass\n',
+            }
+        )
+        s2 = compile_skill(
+            {
+                "name": "warehouse-audit-app-skill",
+                "custom_override": True,
+                "blueprint": '@app.get("/api/stock")\ndef check_stock(): pass\n@app.post("/api/stock/reconcile")\ndef reconcile_stock(): pass\n',
+            }
+        )
+        save_skill_to_workspace(s1)
+        save_skill_to_workspace(s2)
+        try:
+            installed = {w["name"] for w in list_workspace_skills()}
+            self.assertIn("order-tracker-app-skill", installed)
+            self.assertIn("warehouse-audit-app-skill", installed)
+
+            list_res = process_mcp_jsonrpc({"jsonrpc": "2.0", "id": 10, "method": "tools/list"})
+            tool_names = {t["name"] for t in list_res["result"]["tools"]}
+            self.assertIn("order_tracker_app_skill__get_api_orders", tool_names)
+            self.assertIn("order_tracker_app_skill__post_api_orders_cancel", tool_names)
+            self.assertIn("warehouse_audit_app_skill__get_api_stock", tool_names)
+            self.assertIn("warehouse_audit_app_skill__fn_reconcile_stock", tool_names)
+
+            res_list = process_mcp_jsonrpc({"jsonrpc": "2.0", "id": 11, "method": "resources/list"})
+            uris = {r["uri"] for r in res_list["result"]["resources"]}
+            self.assertIn("skill://order-tracker-app-skill/SKILL.md", uris)
+            self.assertIn("skill://warehouse-audit-app-skill/SKILL.md", uris)
+        finally:
+            delete_workspace_skill("order-tracker-app-skill")
+            delete_workspace_skill("warehouse-audit-app-skill")
 
 
 class TestZeroProprietaryContent(unittest.TestCase):
@@ -222,7 +300,9 @@ class TestZeroProprietaryContent(unittest.TestCase):
         for path in ROOT_DIR.rglob("*"):
             if not path.is_file():
                 continue
-            if ".git" in path.parts or "__pycache__" in path.parts:
+            if any(part in path.parts for part in (".git", "__pycache__", "skills_workspace")):
+                continue
+            if path.name == "server.log":
                 continue
             if path.suffix.lower() not in text_extensions:
                 continue
