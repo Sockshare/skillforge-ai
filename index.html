@@ -3,8 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SkillForge AI — Turn Any PC Application into a Multi-Tool LLM Skill &amp; Plug-and-Play MCP Server</title>
-  <meta name="description" content="Select any application on your PC, provide your transformation documentation, and connect to one or multiple LLMs (Local Ollama, LM Studio, vLLM, OpenAI, Claude, Gemini) to compile multi-tool SKILL.md packages and a Plug-and-Play Model Context Protocol (MCP) Hub Server." />
+  <title>SkillForge AI — Turn Any Application into an LLM Skill</title>
   <link rel="stylesheet" href="static/css/styles.css" />
 </head>
 <body>
@@ -13,398 +12,145 @@
       <div class="brand">
         <div class="brand-logo" aria-hidden="true">SF</div>
         <div>
-          <div class="brand-title-row">
-            <h1 class="brand-title">SkillForge AI</h1>
-            <span class="badge badge-accent">v2.0 Multi-Skill &amp; Multi-LLM</span>
-            <span id="runtime-mode-badge" class="badge badge-emerald">Plug-and-Play MCP Hub Active</span>
-          </div>
-          <p class="brand-subtitle">
-            Turn Any Application on Your PC into a Multi-Tool LLM Skill (<code>SKILL.md</code>) &amp; Plug-and-Play Model Context Protocol (<code>mcp_server.py</code>) Server
-          </p>
+          <h1 class="brand-title">SkillForge AI</h1>
+          <p class="brand-subtitle">Select an application on your PC and turn it into a ready-to-use LLM Skill</p>
         </div>
       </div>
       <div class="topbar-actions">
-        <a href="https://github.com/Sockshare/skillforge-ai" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
-          GitHub Repository
-        </a>
-        <button id="btn-quick-compile" class="btn btn-primary" type="button">
-          ⚡ Compile &amp; Register Skill in MCP Hub
+        <span id="ollama-status-pill" class="badge badge-emerald">Checking LLM...</span>
+        <button id="btn-copy-mcp-cmd" class="btn btn-secondary btn-sm" type="button" title="Copy plug-and-play MCP server config for Claude Desktop / Cursor">
+          🔌 Copy MCP Server Config
         </button>
       </div>
     </div>
   </header>
 
-  <nav class="tabbar" aria-label="Studio Navigation">
-    <div class="container tabbar-inner">
-      <button class="tab-btn active" data-tab="tab-compiler" type="button">
-        1. PC App → Skill Compiler
-      </button>
-      <button class="tab-btn" data-tab="tab-mcp" type="button">
-        2. Plug-and-Play Multi-Skill MCP Hub
-      </button>
-      <button class="tab-btn" data-tab="tab-determinism" type="button">
-        3. 3-Run Determinism &amp; 5-Gate Verifier
-      </button>
-      <button class="tab-btn" data-tab="tab-registry" type="button">
-        4. Multi-Skill Workspace &amp; Multi-LLM Manager
-      </button>
-    </div>
-  </nav>
-
   <main class="container main-content">
-    <!-- TAB 1: PC APP -> SKILL COMPILER STUDIO -->
-    <section id="tab-compiler" class="tab-panel active">
-      <div class="studio-grid">
-        <!-- Left Column: Non-Prescriptive 3-Part Input Studio -->
-        <div class="card">
-          <div class="card-header">
-            <h2>Convert Your Application into a Multi-Tool LLM Skill</h2>
-            <span class="badge badge-outline">3 Required Inputs</span>
-          </div>
-
-          <!-- INPUT 1: SELECT APPLICATION FROM PC -->
-          <div class="form-group" style="background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 10px; padding: 14px; margin-bottom: 14px;">
-            <label style="color: #a5b4fc; font-weight: 700; font-size: 0.92rem;">
-              1️⃣ Input 1 — Select Your Application on Your PC (Folder, Files, or Path)
-            </label>
-            <p class="text-muted" style="font-size: 0.8rem; margin: 4px 0 10px 0;">
-              Point SkillForge AI at any web or desktop application folder on your PC (Python, FastAPI, Flask, Express, Node, React/HTML, or OpenAPI). It automatically extracts every route and function as an MCP tool.
-            </p>
-
-            <!-- Local PC Path Scanner + Browser Button -->
-            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px;">
-              <input id="pc-app-path-input" type="text" class="input-control" style="flex: 1; min-width: 210px;" placeholder="Enter local application folder or file path on your PC..." />
-              <button id="btn-scan-pc-path" class="btn btn-primary" type="button">
-                🔍 Scan PC Path
-              </button>
-              <button id="btn-open-pc-browser" class="btn btn-secondary" type="button">
-                🗂️ Browse PC Folders
-              </button>
-            </div>
-
-            <!-- Native Folder Picker & Multi-File Picker -->
-            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-              <label class="btn btn-secondary btn-sm" style="cursor: pointer; margin: 0;">
-                📁 Select Application Folder from PC
-                <input id="webapp-folder-upload" type="file" webkitdirectory directory multiple style="display: none;" />
-              </label>
-              <label class="btn btn-secondary btn-sm" style="cursor: pointer; margin: 0;">
-                📄 Select Application File(s) (.py, .js, .ts, .html, .json)
-                <input id="webapp-file-upload" type="file" multiple accept=".py,.js,.ts,.jsx,.tsx,.html,.json,.yaml,.yml,.md" style="display: none;" />
-              </label>
-            </div>
-
-            <!-- Inline PC Directory Browser Drawer (Hidden until clicked) -->
-            <div id="pc-browser-drawer" style="display: none; margin-top: 10px; background: #090d16; border: 1px solid #334155; border-radius: 8px; padding: 10px;">
-              <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px;">
-                <code id="pc-browser-current-path" style="font-size: 0.78rem; color: #93c5fd; word-break: break-all;"></code>
-                <div style="display: flex; gap: 6px;">
-                  <button id="btn-pc-browser-up" class="btn btn-secondary btn-sm" type="button">⬆️ Up</button>
-                  <button id="btn-pc-browser-scan-current" class="btn btn-primary btn-sm" type="button">✓ Use This Folder</button>
-                  <button id="btn-pc-browser-close" class="btn btn-secondary btn-sm" type="button">✕</button>
-                </div>
-              </div>
-              <div id="pc-browser-list" style="max-height: 210px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;"></div>
-            </div>
-
-            <div id="webapp-routes-banner" class="text-muted" style="font-size: 0.8rem; margin-top: 8px;">
-              No application loaded yet — browse or select an application folder/file from your PC, or paste application code below.
-            </div>
-          </div>
-
-          <div class="form-row-2">
-            <div class="form-group">
-              <label for="skill-name-input">Skill Identifier (kebab-case)</label>
-              <input id="skill-name-input" type="text" class="input-control" value="my-custom-app-skill" placeholder="e.g. billing-portal-skill" />
-            </div>
-            <div class="form-group">
-              <label for="skill-category-input">Domain / Category</label>
-              <input id="skill-category-input" type="text" class="input-control" value="Custom PC Application Skill" placeholder="e.g. DevSecOps / Data / FinTech" />
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label for="skill-desc-input">Skill Trigger Description (YAML Frontmatter <code>description</code>)</label>
-            <textarea id="skill-desc-input" rows="2" class="input-control" placeholder="Describe what your application does and when the LLM should invoke this skill..."></textarea>
-          </div>
-
-          <div class="form-group">
-            <label for="skill-blueprint-input">
-              Application Source Code / Discovered Routes &amp; Functions (Auto-populated when you select a PC folder/file, or paste directly)
-            </label>
-            <textarea id="skill-blueprint-input" rows="7" class="input-control code-textarea" spellcheck="false" placeholder="# Select an application folder/file from your PC above, or paste your application's server.py / app.py / routes.js / OpenAPI JSON here..."></textarea>
-          </div>
-
-          <!-- INPUT 2: THE TRANSFORMATION DOCUMENTATION -->
-          <div class="form-group" style="background: rgba(16, 185, 129, 0.06); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 10px; padding: 12px; margin-bottom: 14px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
-              <label for="transformation-doc-input" style="color: #6ee7b7; font-weight: 700; margin: 0;">
-                2️⃣ Input 2 — Documentation to Transform an Application into a Skill
-              </label>
-              <label class="btn btn-secondary btn-sm" style="cursor: pointer; margin: 0;">
-                📄 Upload Custom Transformation Doc (.md/.txt)
-                <input id="doc-file-upload" type="file" accept=".md,.txt,.json" style="display: none;" />
-              </label>
-            </div>
-            <textarea id="transformation-doc-input" rows="5" class="input-control code-textarea" style="margin-top: 8px;" spellcheck="false"></textarea>
-          </div>
-
-          <!-- INPUT 3: MULTI-LLM CONNECTION & ROUTER -->
-          <div class="form-group" style="background: rgba(245, 158, 11, 0.07); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 10px; padding: 12px; margin-bottom: 14px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
-              <label for="llm-profile-select" style="color: #fcd34d; font-weight: 700; margin: 0;">
-                3️⃣ Input 3 — LLM Connection (Select Active LLM Profile or Configure Multiple LLMs)
-              </label>
-              <span id="ollama-status-pill" class="badge badge-emerald">Checking Local LLMs...</span>
-            </div>
-
-            <div class="form-row-2" style="margin-top: 8px;">
-              <div class="form-group" style="margin-bottom: 6px;">
-                <label for="llm-profile-select">Active LLM Configuration Profile</label>
-                <select id="llm-profile-select" class="input-control"></select>
-              </div>
-              <div class="form-group" style="margin-bottom: 6px;">
-                <label for="llm-model-input">Model Identifier Override</label>
-                <input id="llm-model-input" type="text" class="input-control" value="llama3.2:3b" />
-              </div>
-            </div>
-
-            <div class="form-row-2" style="margin-top: 4px;">
-              <div class="form-group" style="margin-bottom: 6px;">
-                <label for="llm-baseurl-input">LLM Base URL (Ollama / LM Studio / vLLM / Cloud API)</label>
-                <input id="llm-baseurl-input" type="text" class="input-control" value="http://127.0.0.1:11434" />
-              </div>
-              <div class="form-group" style="margin-bottom: 6px;">
-                <label for="llm-apikey-input">API Key (Optional for Local; Session Memory Only)</label>
-                <input id="llm-apikey-input" type="password" class="input-control" placeholder="Leave blank for Local Ollama / LM Studio..." autocomplete="off" />
-              </div>
-            </div>
-
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 4px;">
-              <div id="llm-status-banner" class="text-muted" style="font-size: 0.78rem; flex: 1;">
-                Connect to Local Ollama (<code>:11434</code>), LM Studio (<code>:1234</code>), vLLM (<code>:8000</code>), or Cloud APIs (OpenAI, Claude, Gemini).
-              </div>
-              <button id="btn-save-llm-profile" class="btn btn-secondary btn-sm" type="button">
-                ➕ Save as New LLM Profile
-              </button>
-            </div>
-          </div>
-
-          <div class="button-row">
-            <button id="btn-llm-translate" class="btn btn-primary btn-lg" type="button">
-              🤖 Translate App → Multi-Tool Skill (via LLM)
-            </button>
-            <button id="btn-compile-main" class="btn btn-secondary btn-lg" type="button">
-              ⚡ Fast AST Compile &amp; Register in MCP Hub
-            </button>
-          </div>
-        </div>
-
-        <!-- Right Column: 4-Stage Pipeline, Discovered Multi-Tools & Generated Code -->
-        <div class="card">
-          <div class="card-header">
-            <h2>Multi-Tool Extraction, 5-Gate Verifier &amp; Generated Skill Files</h2>
-            <span id="package-hash-badge" class="badge badge-emerald">Ready</span>
-          </div>
-
-          <div class="form-group" style="margin-bottom: 12px;">
-            <label>Discovered MCP Tools Extracted from This Application (<span id="extracted-tools-count">0</span> Tools)</label>
-            <div id="extracted-tools-pills" style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;"></div>
-          </div>
-
-          <div id="pipeline-stages" class="stage-list"></div>
-
-          <div class="section-divider"></div>
-          <h3 class="subsection-title">5-Gate Quality, AST Security &amp; 3-Run Determinism Scorecard</h3>
-          <div id="gates-scorecard" class="gate-list"></div>
-
-          <div class="section-divider"></div>
-          <div class="artifact-header">
-            <div class="artifact-tabs">
-              <button class="artifact-tab active" data-file="SKILL.md" type="button">SKILL.md</button>
-              <button class="artifact-tab" data-file="mcp_server.py" type="button">mcp_server.py</button>
-              <button class="artifact-tab" data-file="scripts/engine.py" type="button">scripts/engine.py</button>
-              <button class="artifact-tab" data-file="references/schema.json" type="button">schema.json</button>
-              <button class="artifact-tab" data-file="tests/test_skill.py" type="button">test_skill.py</button>
-            </div>
-            <div class="artifact-actions">
-              <button id="btn-copy-artifact" class="btn btn-secondary btn-sm" type="button">📋 Copy File</button>
-              <button id="btn-download-artifact" class="btn btn-secondary btn-sm" type="button">⬇ Download File</button>
-              <button id="btn-download-zip" class="btn btn-primary btn-sm" type="button">📦 Download Skill .zip</button>
-            </div>
-          </div>
-
-          <div class="artifact-meta-bar">
-            <code id="active-artifact-name">SKILL.md</code>
-            <code id="active-artifact-sha">SHA-256: —</code>
-          </div>
-          <pre id="artifact-code-viewer" class="code-viewer"></pre>
-        </div>
-      </div>
-    </section>
-
-    <!-- TAB 2: PLUG-AND-PLAY MULTI-SKILL & MULTI-TOOL MCP HUB -->
-    <section id="tab-mcp" class="tab-panel">
-      <div class="studio-grid">
-        <!-- Left Column: Plug-and-Play Client Configs & Installed Multi-Tool Inventory -->
-        <div class="card">
-          <div class="card-header">
-            <h2>Plug-and-Play MCP Hub Server Setup</h2>
-            <span class="badge badge-emerald">JSON-RPC 2.0 (stdio + HTTP)</span>
-          </div>
-          <p class="text-muted" style="margin-bottom: 12px;">
-            SkillForge AI includes a built-in, production-ready <strong>Multi-Skill &amp; Multi-Tool MCP Hub Server (<code>mcp_server.py</code>)</strong>. Every application you convert is automatically registered into <code>skills_workspace/</code> so your LLM clients can call <strong>all tools across all of your skills</strong> through a single MCP server connection.
-          </p>
-
-          <div class="form-group">
-            <label>1-Click Client Configuration (Copy &amp; Paste into Your LLM Host)</label>
-            <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px;">
-              <button class="btn btn-secondary btn-sm mcp-client-cfg-btn active" data-client="claude_desktop_config" type="button">Claude Desktop</button>
-              <button class="btn btn-secondary btn-sm mcp-client-cfg-btn" data-client="cursor_mcp_config" type="button">Cursor (.cursor/mcp.json)</button>
-              <button class="btn btn-secondary btn-sm mcp-client-cfg-btn" data-client="windsurf_mcp_config" type="button">Windsurf</button>
-              <button class="btn btn-secondary btn-sm mcp-client-cfg-btn" data-client="vscode_cline_config" type="button">VS Code / Cline</button>
-              <button id="btn-copy-mcp-config" class="btn btn-primary btn-sm" type="button">📋 Copy Config JSON</button>
-            </div>
-            <pre id="mcp-client-config-viewer" class="code-viewer" style="max-height: 190px;"></pre>
-          </div>
-
-          <div class="section-divider"></div>
-          <div class="form-group">
-            <label>Live MCP JSON-RPC 2.0 Request Console</label>
-            <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px;">
-              <button class="btn btn-secondary btn-sm mcp-preset-btn" data-method="initialize" type="button">1. initialize</button>
-              <button class="btn btn-secondary btn-sm mcp-preset-btn" data-method="tools/list" type="button">2. tools/list (All Skills &amp; Tools)</button>
-              <button class="btn btn-secondary btn-sm mcp-preset-btn" data-method="resources/list" type="button">3. resources/list (SKILL.md URIs)</button>
-              <button class="btn btn-secondary btn-sm mcp-preset-btn" data-method="tools/call" type="button">4. tools/call</button>
-            </div>
-            <div class="form-group" style="margin-bottom: 8px;">
-              <label for="mcp-tool-selector">Select Any Registered Tool Across Your Installed Skills to Test <code>tools/call</code></label>
-              <select id="mcp-tool-selector" class="input-control"></select>
-            </div>
-            <textarea id="mcp-request-editor" rows="9" class="input-control code-textarea" spellcheck="false"></textarea>
-          </div>
-          <button id="btn-send-mcp" class="btn btn-primary btn-lg" type="button">
-            ▶ Send JSON-RPC 2.0 Request to MCP Hub
-          </button>
-        </div>
-
-        <!-- Right Column: Live MCP Response & Registered Multi-Skill Tool Table -->
-        <div class="card">
-          <div class="card-header">
-            <h2>MCP Hub Response &amp; Active Multi-Tool Catalog</h2>
-            <div style="display: flex; gap: 8px;">
-              <span id="mcp-latency-badge" class="badge badge-outline">Latency: —</span>
-              <span id="mcp-digest-badge" class="badge badge-emerald">SHA-256 Verified</span>
-            </div>
-          </div>
-          <pre id="mcp-response-viewer" class="code-viewer" style="max-height: 310px;"></pre>
-
-          <div class="section-divider"></div>
-          <h3 class="subsection-title">All Active Tools Exposed by <code>mcp_server.py</code></h3>
-          <div id="mcp-active-tools-list" style="max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;"></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- TAB 3: 3-RUN DETERMINISM & 5-GATE SECURITY LAB -->
-    <section id="tab-determinism" class="tab-panel">
-      <div class="card">
-        <div class="card-header">
+    <div class="workspace-layout">
+      <!-- STEP 1: SELECT APPLICATION & CONVERT -->
+      <section class="card">
+        <div class="step-header">
+          <span class="step-number">1</span>
           <div>
-            <h2>3-Run Cryptographic Determinism &amp; 5-Gate Security Lab</h2>
-            <p class="text-muted">
-              Executes the compiled skill 3 consecutive times and verifies bit-for-bit identical <code>SHA-256</code> digests across <code>Run 1 == Run 2 == Run 3</code>.
-            </p>
+            <h2>Select Application on Your PC</h2>
+            <p class="text-muted">Browse folders on your PC or upload application files to convert into an LLM Skill.</p>
           </div>
-          <button id="btn-run-determinism" class="btn btn-primary" type="button">
-            🔄 Re-Run 3-Pass Determinism Verification
-          </button>
         </div>
 
-        <div id="determinism-runs-grid" class="runs-grid"></div>
-
-        <div class="section-divider"></div>
-        <h3 class="subsection-title">Canonical Deterministic Output Preview</h3>
-        <pre id="determinism-eval-viewer" class="code-viewer"></pre>
-      </div>
-    </section>
-
-    <!-- TAB 4: MULTI-SKILL WORKSPACE & MULTI-LLM CONNECTION MANAGER -->
-    <section id="tab-registry" class="tab-panel">
-      <div class="studio-grid">
-        <!-- Left: Installed Multi-Skill & Multi-Tool Workspace -->
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <h2>Installed Multi-Skill &amp; Multi-Tool Workspace (<code>skills_workspace/</code>)</h2>
-              <p class="text-muted">
-                All skills below are active in your Plug-and-Play MCP Hub Server. Each skill can expose multiple HTTP route and function tools simultaneously.
-              </p>
-            </div>
-            <span id="workspace-summary-badge" class="badge badge-emerald">0 Skills • 0 Tools</span>
-          </div>
-          <div id="registry-catalog-grid" class="registry-grid"></div>
+        <!-- Upload or Enter Path Bar -->
+        <div class="upload-bar">
+          <label class="btn btn-secondary" style="cursor: pointer;">
+            📁 Upload App Folder
+            <input id="webapp-folder-upload" type="file" webkitdirectory directory multiple style="display: none;" />
+          </label>
+          <label class="btn btn-secondary" style="cursor: pointer;">
+            📄 Upload App File(s)
+            <input id="webapp-file-upload" type="file" multiple accept=".py,.js,.ts,.jsx,.tsx,.html,.json,.yaml,.yml,.md" style="display: none;" />
+          </label>
+          <label class="btn btn-secondary" style="cursor: pointer;" title="Optional: Upload your own Markdown instructions for how to convert the app into a skill">
+            📘 Upload Custom Skill Guide (Optional)
+            <input id="doc-file-upload" type="file" accept=".md,.txt" style="display: none;" />
+          </label>
         </div>
 
-        <!-- Right: Multi-LLM Connection & Profile Manager -->
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <h2>Multi-LLM Connection Manager</h2>
-              <p class="text-muted">
-                Configure and run multiple local (Ollama, LM Studio, vLLM, llama.cpp) and cloud (OpenAI, Claude, Gemini) LLM endpoints side-by-side.
-              </p>
-            </div>
-            <button id="btn-refresh-llms" class="btn btn-secondary btn-sm" type="button">🔄 Auto-Detect Local Ollama Models</button>
+        <!-- PC Folder Browser -->
+        <div class="pc-browser-box">
+          <div class="pc-browser-bar">
+            <button id="btn-pc-up" class="btn btn-secondary btn-sm" type="button">⬆️ Up Folder</button>
+            <input id="pc-current-path" type="text" class="input-control path-input" placeholder="Path on your PC..." />
+            <button id="btn-pc-go" class="btn btn-secondary btn-sm" type="button">Go</button>
+            <button id="btn-select-current-folder" class="btn btn-primary btn-sm" type="button">✓ Use Current Folder</button>
           </div>
-
-          <div id="llm-profiles-list" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px;"></div>
-
-          <div class="section-divider"></div>
-          <h3 class="subsection-title">Add or Update an LLM Connection Profile</h3>
-          <div class="form-row-2">
-            <div class="form-group">
-              <label for="new-llm-name">Profile Display Name</label>
-              <input id="new-llm-name" type="text" class="input-control" placeholder="e.g. Local Qwen2.5-Coder 7B (Ollama)" />
-            </div>
-            <div class="form-group">
-              <label for="new-llm-provider">Provider Type</label>
-              <select id="new-llm-provider" class="input-control">
-                <option value="ollama">Local Ollama (/api/chat)</option>
-                <option value="custom_openai">Local LM Studio / vLLM / llama.cpp (/v1/chat/completions)</option>
-                <option value="openai">OpenAI / OpenRouter API</option>
-                <option value="anthropic">Anthropic Claude API</option>
-                <option value="gemini">Google Gemini API</option>
-              </select>
-            </div>
-          </div>
-          <div class="form-row-2">
-            <div class="form-group">
-              <label for="new-llm-url">Endpoint Base URL</label>
-              <input id="new-llm-url" type="text" class="input-control" value="http://127.0.0.1:11434" />
-            </div>
-            <div class="form-group">
-              <label for="new-llm-model">Model Name</label>
-              <input id="new-llm-model" type="text" class="input-control" placeholder="e.g. llama3.2:3b, qwen2.5-coder:7b, gpt-4o" />
-            </div>
-          </div>
-          <div class="form-row-2">
-            <div class="form-group">
-              <label for="new-llm-role">Assigned Role</label>
-              <input id="new-llm-role" type="text" class="input-control" value="Skill Architect &amp; Tool Synthesizer" />
-            </div>
-            <div class="form-group">
-              <label for="new-llm-key">API Key (Optional; Held in Session Memory Only)</label>
-              <input id="new-llm-key" type="password" class="input-control" placeholder="Leave empty for local LLMs..." autocomplete="off" />
-            </div>
-          </div>
-          <button id="btn-create-llm-profile" class="btn btn-primary" type="button">
-            💾 Save LLM Connection Profile
-          </button>
+          <div id="pc-folder-list" class="pc-folder-list"></div>
         </div>
-      </div>
-    </section>
+
+        <!-- Selected Application Banner -->
+        <div id="selected-app-box" class="selected-app-box">
+          <div>
+            <div class="selected-app-label">Selected Application:</div>
+            <div id="selected-app-name" class="selected-app-title">None selected yet — click any application folder above or upload files</div>
+            <div id="selected-app-meta" class="text-muted small-text"></div>
+          </div>
+          <input id="skill-name-input" type="text" class="input-control skill-name-field" placeholder="skill-name (auto-filled)" />
+        </div>
+
+        <!-- LLM Selector Row -->
+        <div class="llm-row">
+          <div style="flex: 1; min-width: 200px;">
+            <label for="llm-profile-select">Translation LLM</label>
+            <select id="llm-profile-select" class="input-control"></select>
+          </div>
+          <div id="api-key-wrap" style="flex: 1; min-width: 180px; display: none;">
+            <label for="llm-apikey-input">API Key (Cloud LLM only)</label>
+            <input id="llm-apikey-input" type="password" class="input-control" placeholder="sk-... or AIza..." autocomplete="off" />
+          </div>
+          <div>
+            <label>&nbsp;</label>
+            <button id="btn-toggle-add-llm" class="btn btn-secondary" type="button">+ Add Another LLM</button>
+          </div>
+        </div>
+
+        <!-- Optional Add LLM Drawer -->
+        <div id="add-llm-drawer" class="add-llm-drawer" style="display: none;">
+          <div class="form-row-3">
+            <input id="new-llm-name" type="text" class="input-control" placeholder="Profile Name (e.g. Local Qwen)" />
+            <select id="new-llm-provider" class="input-control">
+              <option value="ollama">Local Ollama (:11434)</option>
+              <option value="custom_openai">Local LM Studio / vLLM (:1234)</option>
+              <option value="openai">OpenAI / OpenRouter</option>
+              <option value="anthropic">Anthropic Claude</option>
+              <option value="gemini">Google Gemini</option>
+            </select>
+            <input id="new-llm-model" type="text" class="input-control" placeholder="Model (e.g. llama3.2:3b)" />
+          </div>
+          <div class="form-row-3" style="margin-top: 8px;">
+            <input id="new-llm-url" type="text" class="input-control" value="http://127.0.0.1:11434" placeholder="Base URL" />
+            <input id="new-llm-key" type="password" class="input-control" placeholder="API Key (optional for local)" />
+            <button id="btn-save-new-llm" class="btn btn-primary" type="button">Save LLM</button>
+          </div>
+        </div>
+
+        <!-- CONVERT BUTTON & PROGRESS BAR -->
+        <button id="btn-convert-skill" class="btn btn-primary btn-convert-hero" type="button">
+          ✨ Convert Application into LLM Skill
+        </button>
+
+        <div id="translation-progress-wrap" class="progress-wrap" style="display: none;">
+          <div class="progress-top">
+            <span id="progress-status-text">Reading application files...</span>
+            <span id="progress-pct-text">0%</span>
+          </div>
+          <div class="progress-track">
+            <div id="progress-bar-fill" class="progress-fill" style="width: 0%;"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- STEP 2: CREATED SKILLS & FILE LOCATIONS -->
+      <section class="card">
+        <div class="step-header">
+          <span class="step-number">2</span>
+          <div>
+            <h2>Created Skills &amp; File Locations</h2>
+            <p class="text-muted">Every skill created below is saved on your PC and automatically active in the built-in MCP server.</p>
+          </div>
+        </div>
+
+        <div id="created-skills-list" class="created-skills-list"></div>
+      </section>
+    </div>
   </main>
+
+  <!-- Simple Modal to Preview SKILL.md if clicked -->
+  <div id="skill-preview-modal" class="modal-backdrop" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <strong id="modal-skill-title">SKILL.md Preview</strong>
+        <button id="btn-close-modal" class="btn btn-secondary btn-sm" type="button">✕ Close</button>
+      </div>
+      <pre id="modal-skill-content" class="code-viewer"></pre>
+    </div>
+  </div>
 
   <script src="static/js/app.js"></script>
 </body>
