@@ -306,8 +306,7 @@ def translate_webapp_with_llm(
             f"(routes: {routes_summary or 'direct CLI'}; functions: {funcs_summary or 'main'}) "
             "with deterministic JSON/Markdown/CSV/HTML reporting and 3-run SHA-256 verification."
         )
-    if parsed.get("name") in (None, "", "web-app-name", "kebab-case-name", "get-health"):
-        parsed["name"] = app_hint_name
+    parsed["name"] = app_hint_name
     parsed["rules"] = introspected["rules"]
     parsed["tools"] = introspected["tools"]
     parsed["sample_input"] = introspected["sample_input"]
