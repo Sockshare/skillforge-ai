@@ -1120,8 +1120,166 @@ function initStudio() {
     document.querySelector('[data-tab="tab-determinism"]').click();
   });
 
+  const DEFAULT_TRANSFORMATION_DOC_CLIENT = `# Web-App-to-LLM-Skill Transformation Guide & Specification (v1.0)
+1. Extract all HTTP routes (@app.get, @app.post, @app.route, router.get/post, fetch) and JSON Schema contracts from the Web Application.
+2. Generate SKILL.md with YAML frontmatter (name in kebab-case, description stating WHAT the skill does and WHEN the LLM should invoke it) + step-by-step workflow + read-only default guardrails.
+3. Generate mcp_server.py (Model Context Protocol JSON-RPC 2.0 tool wrapper) and scripts/engine.py (deterministic CLI outputting canonical sorted JSON + SHA-256 verification digest).
+4. Verify all 5 Gates (YAML frontmatter, AST security lint, JSON Schema, 3-Run SHA-256 Determinism, and MCP JSON-RPC 2.0 handshake).`;
+
+  const docInput = document.getElementById("transformation-doc-input");
+  if (docInput && !docInput.value.trim()) {
+    docInput.value = DEFAULT_TRANSFORMATION_DOC_CLIENT;
+  }
+
+  // File upload for Input 1 (Web App)
+  const webAppFileUpload = document.getElementById("webapp-file-upload");
+  if (webAppFileUpload) {
+    webAppFileUpload.addEventListener("change", async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const text = await file.text();
+      const baseSlug = file.name.replace(/\.[^.]+$/, "").toLowerCase().replace(/[^a-z0-9]+/g, "-") + "-skill";
+      document.getElementById("skill-name-input").value = baseSlug;
+      document.getElementById("skill-category-input").value = `Web App → LLM Skill (${file.name})`;
+      document.getElementById("skill-blueprint-input").value = text;
+      loadAndConvertWebApp();
+    });
+  }
+
+  // File upload for Input 2 (Transformation Documentation)
+  const docFileUpload = document.getElementById("doc-file-upload");
+  if (docFileUpload) {
+    docFileUpload.addEventListener("change", async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      docInput.value = await file.text();
+    });
+  }
+
+  // Input 3: LLM Provider & Ollama Status Check
+  const providerSelect = document.getElementById("llm-provider-select");
+  const modelInput = document.getElementById("llm-model-input");
+  const apiKeyRow = document.getElementById("llm-apikey-row");
+  const ollamaPill = document.getElementById("ollama-status-pill");
+  const llmBanner = document.getElementById("llm-status-banner");
+
+  if (providerSelect) {
+    providerSelect.addEventListener("change", () => {
+      const p = providerSelect.value;
+      if (apiKeyRow) {
+        apiKeyRow.style.display = p === "openai" || p === "gemini" ? "block" : "none";
+      }
+      if (modelInput) {
+        if (p === "ollama") modelInput.value = "llama3.2:3b";
+        else if (p === "openai") modelInput.value = "gpt-4o-mini";
+        else if (p === "gemini") modelInput.value = "gemini-2.5-flash";
+        else modelInput.value = "ast-deterministic-v1";
+      }
+    });
+  }
+
+  async function checkLlmStatus() {
+    try {
+      const resp = await fetch("/api/llm/status");
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.default_transformation_doc && docInput) {
+          docInput.value = data.default_transformation_doc;
+        }
+        if (data.ollama && data.ollama.connected) {
+          if (ollamaPill) {
+            ollamaPill.textContent = `Ollama Connected (${data.ollama.models.join(", ")})`;
+            ollamaPill.className = "badge badge-emerald";
+          }
+          if (modelInput && data.ollama.recommended_model) {
+            modelInput.value = data.ollama.recommended_model;
+          }
+          return;
+        }
+      }
+    } catch (_) {
+      // Fallback check directly to localhost:11434
+    }
+    if (ollamaPill) {
+      ollamaPill.textContent = "AST + Cloud API Ready";
+      ollamaPill.className = "badge badge-accent";
+    }
+  }
+
+  async function runLlmTranslation() {
+    const provider = providerSelect ? providerSelect.value : "ollama";
+    const model = modelInput ? modelInput.value.trim() : "llama3.2:3b";
+    const apiKey = document.getElementById("llm-apikey-input") ? document.getElementById("llm-apikey-input").value.trim() : "";
+    const webappSource = document.getElementById("skill-blueprint-input").value.trim();
+    const transformationDoc = docInput ? docInput.value.trim() : DEFAULT_TRANSFORMATION_DOC_CLIENT;
+    const btn = document.getElementById("btn-llm-translate");
+
+    if (provider === "deterministic_ast") {
+      loadAndConvertWebApp();
+      return;
+    }
+
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = `⏳ Translating via ${provider.toUpperCase()} (${model})...`;
+    }
+    if (llmBanner) {
+      llmBanner.innerHTML = `<span style="color:#fcd34d;">Sending (1) Web App + (2) Transformation Guide to <strong>${provider} (${model})</strong>...</span>`;
+    }
+
+    try {
+      const resp = await fetch("/api/llm/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: document.getElementById("skill-name-input").value.trim(),
+          category: document.getElementById("skill-category-input").value.trim(),
+          description: document.getElementById("skill-desc-input").value.trim(),
+          blueprint: webappSource,
+          webapp_source: webappSource,
+          transformation_doc: transformationDoc,
+          llm_config: { provider, model, api_key: apiKey }
+        })
+      });
+      const data = await resp.json();
+      if (resp.ok && data.artifacts) {
+        currentCompiledResult = data;
+        if (data.spec) {
+          document.getElementById("skill-name-input").value = data.spec.name;
+          document.getElementById("skill-category-input").value = data.spec.category;
+          document.getElementById("skill-desc-input").value = data.spec.description;
+        }
+        renderCompilerOutput(data);
+        renderDeterminismLab(data);
+        loadMcpPresetRequest("tools/call");
+        if (llmBanner) {
+          llmBanner.innerHTML = `<strong style="color:#34d399;">✓ Translated by ${provider.toUpperCase()} (${model})</strong> using your Transformation Guide &amp; verified across all 5 Gates (Bundle SHA-256: <code>${data.package_sha256.slice(0, 16)}...</code>).`;
+        }
+      } else {
+        if (llmBanner) {
+          llmBanner.innerHTML = `<span style="color:#fb7185;">LLM notice: ${data.error || "Falling back to AST Introspector"}</span>`;
+        }
+        await runCompilation();
+      }
+    } catch (err) {
+      if (llmBanner) {
+        llmBanner.innerHTML = `<span style="color:#fcd34d;">Offline/Static mode: Synthesized via deterministic AST Introspector (${err.message}).</span>`;
+      }
+      await runCompilation();
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "🤖 Translate Web App → Skill (via LLM)";
+      }
+    }
+  }
+
+  const llmBtn = document.getElementById("btn-llm-translate");
+  if (llmBtn) {
+    llmBtn.addEventListener("click", runLlmTranslation);
+  }
+
   const webAppSelect = document.getElementById("webapp-template-select");
-  const convertBtn = document.getElementById("btn-convert-webapp");
   const bannerEl = document.getElementById("webapp-routes-banner");
 
   function loadAndConvertWebApp() {
@@ -1139,9 +1297,9 @@ function initStudio() {
       if (discovered.length > 0) {
         bannerEl.innerHTML = `<strong style="color:#34d399;">✓ Introspected ${discovered.length} Web App Routes:</strong> ` +
           discovered.map((r) => `<code>${r.method} ${r.path}</code>`).join(" &bull; ") +
-          ` — Compiled into <code>SKILL.md</code> + <code>mcp_server.py</code> + <code>scripts/engine.py</code>`;
+          ` — Ready for LLM or AST translation into <code>SKILL.md</code> + <code>mcp_server.py</code> + <code>scripts/engine.py</code>`;
       } else {
-        bannerEl.innerHTML = `Compiled custom blueprint into <code>SKILL.md</code> + <code>mcp_server.py</code> + <code>scripts/engine.py</code>.`;
+        bannerEl.innerHTML = `Loaded custom blueprint for translation into <code>SKILL.md</code> + <code>mcp_server.py</code> + <code>scripts/engine.py</code>.`;
       }
     }
     runCompilation();
@@ -1152,13 +1310,11 @@ function initStudio() {
       if (webAppSelect.value) loadAndConvertWebApp();
     });
   }
-  if (convertBtn) {
-    convertBtn.addEventListener("click", loadAndConvertWebApp);
-  }
 
   renderPresetPills();
   renderRegistryCatalog();
   selectPreset(activePresetId);
+  checkLlmStatus();
 }
 
 document.addEventListener("DOMContentLoaded", initStudio);

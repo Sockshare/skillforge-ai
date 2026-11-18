@@ -18,6 +18,11 @@ from skillforge.compiler import (
     evaluate_skill_deterministically,
     parse_blueprint_or_preset,
 )
+from skillforge.llm_bridge import (
+    DEFAULT_TRANSFORMATION_DOC,
+    get_ollama_status,
+    translate_webapp_with_llm,
+)
 from skillforge.presets import list_presets
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -61,6 +66,7 @@ class SkillForgeRequestHandler(BaseHTTPRequestHandler):
         route = parsed.path
 
         if route == "/api/health":
+            ollama = get_ollama_status()
             self._send_json(
                 {
                     "status": "ok",
@@ -68,6 +74,24 @@ class SkillForgeRequestHandler(BaseHTTPRequestHandler):
                     "version": __version__,
                     "presets_available": len(list_presets()),
                     "mcp_protocol_version": "2024-11-05",
+                    "ollama_connected": ollama["connected"],
+                    "ollama_models": ollama["models"],
+                }
+            )
+            return
+
+        if route == "/api/llm/status":
+            ollama = get_ollama_status()
+            self._send_json(
+                {
+                    "ollama": ollama,
+                    "default_transformation_doc": DEFAULT_TRANSFORMATION_DOC,
+                    "supported_providers": [
+                        {"id": "ollama", "label": "Local Ollama (http://127.0.0.1:11434)"},
+                        {"id": "openai", "label": "OpenAI / OpenRouter Compatible API"},
+                        {"id": "gemini", "label": "Google Gemini Cloud API"},
+                        {"id": "deterministic_ast", "label": "Deterministic AST Route & Schema Introspector (Offline)"},
+                    ],
                 }
             )
             return
@@ -107,6 +131,30 @@ class SkillForgeRequestHandler(BaseHTTPRequestHandler):
             body = self._read_json_body()
         except Exception as exc:  # noqa: BLE001
             self._send_json({"error": f"Invalid JSON payload: {exc}"}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        if route == "/api/llm/translate":
+            try:
+                webapp_source = body.get("webapp_source") or body.get("blueprint") or ""
+                transformation_doc = body.get("transformation_doc") or DEFAULT_TRANSFORMATION_DOC
+                llm_config = body.get("llm_config") or {"provider": "ollama", "model": "llama3.2:3b"}
+                llm_res = translate_webapp_with_llm(webapp_source, transformation_doc, llm_config)
+                spec_override = llm_res.get("spec_override") or {}
+                merged_payload = dict(body)
+                merged_payload["custom_override"] = True
+                for k in ("name", "title", "category", "description", "guardrails", "rules"):
+                    if spec_override.get(k):
+                        merged_payload[k] = spec_override[k]
+                compiled = compile_skill(merged_payload)
+                compiled["llm_translation"] = {
+                    "provider": llm_res["provider"],
+                    "model": llm_res["model"],
+                    "endpoint": llm_res["endpoint"],
+                    "used_transformation_doc": True,
+                }
+                self._send_json(compiled)
+            except Exception as exc:  # noqa: BLE001
+                self._send_json({"error": f"LLM translation failed: {exc}"}, status=HTTPStatus.BAD_GATEWAY)
             return
 
         if route == "/api/compile":

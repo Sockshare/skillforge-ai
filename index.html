@@ -63,31 +63,33 @@
       </div>
 
       <div class="studio-grid">
-        <!-- Left Column: Input Blueprint & Configuration -->
+        <!-- Left Column: 3-Part Generalizable Web-App-to-Skill Translator -->
         <div class="card">
           <div class="card-header">
-            <h2>Web Application / OpenAPI / Policy Blueprint → LLM Skill Input</h2>
+            <h2>3-Part Generalizable Web-App → LLM Skill Translator</h2>
             <span class="badge badge-outline">Stage 1 Input</span>
           </div>
 
-          <div class="form-group" style="background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 10px; padding: 12px; margin-bottom: 14px;">
+          <!-- INPUT 1: THE WEB APPLICATION -->
+          <div class="form-group" style="background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 10px; padding: 12px; margin-bottom: 12px;">
             <label for="webapp-template-select" style="color: #a5b4fc; font-weight: 700;">
-              🌐 Convert a Web Application into an LLM Skill (FastAPI / Flask / Express / Python HTTP / OpenAPI)
+              1️⃣ Input 1 — The Web Application (Upload File, Select Sample App, or Paste Code Below)
             </label>
             <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px;">
               <select id="webapp-template-select" class="input-control" style="flex: 1; min-width: 220px;">
-                <option value="">-- Choose a Sample Web Application to Convert (or paste code below) --</option>
+                <option value="">-- Choose a Sample Web Application (or upload/paste your own) --</option>
                 <option value="trustforge-soc2-webapp">TrustForge SOC 2 Web App (Python HTTP + /api/assess, /api/triage-7gate)</option>
                 <option value="fastapi-finops-portal">FastAPI Cloud FinOps &amp; GPU Cluster Rightsizing Web App</option>
                 <option value="flask-secops-incident-app">Flask SecOps Incident Response &amp; CVE Triage Web App</option>
                 <option value="express-privacy-dsar-app">Express.js + React GDPR/CCPA DSAR Fulfillment Web App</option>
               </select>
-              <button id="btn-convert-webapp" class="btn btn-primary" type="button">
-                🔍 Convert Web App → LLM Skill
-              </button>
+              <label class="btn btn-secondary" style="cursor: pointer; margin: 0;">
+                📂 Upload Web App File
+                <input id="webapp-file-upload" type="file" accept=".py,.js,.ts,.html,.json,.yaml,.yml,.md" style="display: none;" />
+              </label>
             </div>
             <div id="webapp-routes-banner" class="text-muted" style="font-size: 0.78rem; margin-top: 6px;">
-              Paste any web app's <code>server.py</code>, <code>app.py</code>, <code>routes.js</code>, or <code>OpenAPI 3.1 JSON</code> below to automatically extract its HTTP routes and compile a deterministic <code>SKILL.md</code> + <code>mcp_server.py</code> + CLI tool for LLMs.
+              Provide any web app's <code>server.py</code>, <code>app.py</code>, <code>routes.js</code>, <code>index.html</code>, or <code>OpenAPI 3.1 JSON</code>.
             </div>
           </div>
 
@@ -109,9 +111,55 @@
 
           <div class="form-group">
             <label for="skill-blueprint-input">
-              Web App Source Code (<code>@app.get</code> / <code>@app.route</code> / <code>fetch</code>) / OpenAPI 3.1 JSON / Workload Fixture
+              Web Application Source Code (<code>@app.get</code> / <code>@app.route</code> / <code>fetch</code>) / OpenAPI 3.1 JSON
             </label>
-            <textarea id="skill-blueprint-input" rows="11" class="input-control code-textarea" spellcheck="false"></textarea>
+            <textarea id="skill-blueprint-input" rows="7" class="input-control code-textarea" spellcheck="false"></textarea>
+          </div>
+
+          <!-- INPUT 2: THE TRANSFORMATION DOCUMENTATION -->
+          <div class="form-group" style="background: rgba(16, 185, 129, 0.06); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 10px; padding: 12px; margin-bottom: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
+              <label for="transformation-doc-input" style="color: #6ee7b7; font-weight: 700; margin: 0;">
+                2️⃣ Input 2 — Documentation to Transform a Web App into a Skill (Editable Guide)
+              </label>
+              <label class="btn btn-secondary btn-sm" style="cursor: pointer; margin: 0;">
+                📄 Upload Custom Guide (.md/.txt)
+                <input id="doc-file-upload" type="file" accept=".md,.txt,.json" style="display: none;" />
+              </label>
+            </div>
+            <textarea id="transformation-doc-input" rows="5" class="input-control code-textarea" style="margin-top: 8px;" spellcheck="false"></textarea>
+          </div>
+
+          <!-- INPUT 3: LLM CONNECTION (LOCAL OLLAMA OR CLOUD API) -->
+          <div class="form-group" style="background: rgba(245, 158, 11, 0.07); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 10px; padding: 12px; margin-bottom: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
+              <label for="llm-provider-select" style="color: #fcd34d; font-weight: 700; margin: 0;">
+                3️⃣ Input 3 — LLM Connection (Local Ollama or Cloud API)
+              </label>
+              <span id="ollama-status-pill" class="badge badge-emerald">Checking Local Ollama...</span>
+            </div>
+            <div class="form-row-2" style="margin-top: 8px;">
+              <div class="form-group" style="margin-bottom: 6px;">
+                <label for="llm-provider-select">LLM Provider</label>
+                <select id="llm-provider-select" class="input-control">
+                  <option value="ollama">Local Ollama (http://127.0.0.1:11434)</option>
+                  <option value="openai">OpenAI / OpenRouter API</option>
+                  <option value="gemini">Google Gemini Cloud API</option>
+                  <option value="deterministic_ast">Deterministic AST Introspector (Offline)</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin-bottom: 6px;">
+                <label for="llm-model-input">Model Name</label>
+                <input id="llm-model-input" type="text" class="input-control" value="llama3.2:3b" />
+              </div>
+            </div>
+            <div id="llm-apikey-row" class="form-group" style="display: none; margin-bottom: 6px;">
+              <label for="llm-apikey-input">Cloud API Key (Session Memory Only — Never Saved to Disk/Git)</label>
+              <input id="llm-apikey-input" type="password" class="input-control" placeholder="sk-... or AIza..." autocomplete="off" />
+            </div>
+            <div id="llm-status-banner" class="text-muted" style="font-size: 0.78rem;">
+              Uses your selected LLM to read (1) the Web App + (2) the Transformation Documentation and synthesize the <code>SKILL.md</code>, <code>mcp_server.py</code>, and <code>scripts/engine.py</code> package.
+            </div>
           </div>
 
           <div class="form-group">
@@ -137,8 +185,12 @@
           </div>
 
           <div class="button-row">
-            <button id="btn-compile-main" class="btn btn-primary btn-lg" type="button">
-              🚀 Compile &amp; Verify Skill Package
+            <button id="btn-llm-translate" class="btn btn-primary btn-lg" type="button">
+              🤖 Translate Web App → Skill (via LLM)
+            </button>
+            <button id="btn-compile-main" class="btn btn-secondary btn-lg" type="button">
+              ⚡ Fast AST Compile &amp; Verify
+            </button>
             </button>
             <button id="btn-save-registry" class="btn btn-secondary" type="button">
               💾 Save to Local Registry
