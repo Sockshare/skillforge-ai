@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SkillForge AI — Turn Any Application into an LLM Skill</title>
+  <title>SkillForge AI — Local Ollama &amp; Cloud LLM Application-to-Skill Studio</title>
   <link rel="stylesheet" href="static/css/styles.css" />
 </head>
 <body>
@@ -13,11 +13,11 @@
         <div class="brand-logo" aria-hidden="true">SF</div>
         <div>
           <h1 class="brand-title">SkillForge AI</h1>
-          <p class="brand-subtitle">Select an application on your PC and turn it into a ready-to-use LLM Skill</p>
+          <p class="brand-subtitle">Turn any Web Application into a Verified <code>SKILL.md</code> &amp; MCP Server — Powered by Local Onboard Ollama (Default) or Cloud LLM APIs</p>
         </div>
       </div>
       <div class="topbar-actions">
-        <span id="ollama-status-pill" class="badge badge-emerald">Checking LLM...</span>
+        <span id="ollama-status-pill" class="badge badge-emerald">Checking Local Ollama...</span>
         <button id="btn-copy-mcp-cmd" class="btn btn-secondary btn-sm" type="button" title="Copy plug-and-play MCP server config for Claude Desktop / Cursor">
           🔌 Copy MCP Server Config
         </button>
@@ -32,23 +32,26 @@
         <div class="step-header">
           <span class="step-number">1</span>
           <div>
-            <h2>Select Application on Your PC</h2>
-            <p class="text-muted">Browse folders on your PC or upload application files to convert into an LLM Skill.</p>
+            <h2>Select Application &amp; Compile into LLM Skill</h2>
+            <p class="text-muted">Browse an application on your PC (or click <strong>TaskPulse</strong>) and compile it using an onboard <strong>Local Ollama</strong> model or an optional <strong>Cloud API</strong>.</p>
           </div>
         </div>
 
-        <!-- Upload or Enter Path Bar -->
+        <!-- Upload or Sample App Bar -->
         <div class="upload-bar">
-          <label class="btn btn-secondary" style="cursor: pointer;">
+          <button id="btn-load-sample-app" class="btn btn-primary btn-sm" type="button" title="Load the bundled TaskPulse sample web app (Port 8110)">
+            ⚡ Load Sample App (TaskPulse :8110)
+          </button>
+          <label class="btn btn-secondary btn-sm" style="cursor: pointer;">
             📁 Upload App Folder
             <input id="webapp-folder-upload" type="file" webkitdirectory directory multiple style="display: none;" />
           </label>
-          <label class="btn btn-secondary" style="cursor: pointer;">
-            📄 Upload App File(s)
+          <label class="btn btn-secondary btn-sm" style="cursor: pointer;">
+            📄 Upload File(s)
             <input id="webapp-file-upload" type="file" multiple accept=".py,.js,.ts,.jsx,.tsx,.html,.json,.yaml,.yml,.md" style="display: none;" />
           </label>
-          <label class="btn btn-secondary" style="cursor: pointer;" title="Optional: Upload your own Markdown instructions for how to convert the app into a skill">
-            📘 Upload Custom Skill Guide (Optional)
+          <label class="btn btn-secondary btn-sm" style="cursor: pointer;" title="Optional: Upload custom Markdown rules for how to convert the app into a skill">
+            📘 Custom Guide (Optional)
             <input id="doc-file-upload" type="file" accept=".md,.txt" style="display: none;" />
           </label>
         </div>
@@ -68,44 +71,44 @@
         <div id="selected-app-box" class="selected-app-box">
           <div>
             <div class="selected-app-label">Selected Application:</div>
-            <div id="selected-app-name" class="selected-app-title">None selected yet — click any application folder above or upload files</div>
+            <div id="selected-app-name" class="selected-app-title">None selected yet — click "⚡ Load Sample App (TaskPulse :8110)" or select a folder above</div>
             <div id="selected-app-meta" class="text-muted small-text"></div>
           </div>
           <input id="skill-name-input" type="text" class="input-control skill-name-field" placeholder="skill-name (auto-filled)" />
         </div>
 
-        <!-- LLM Selector Row -->
+        <!-- Step 1 LLM Selector Row -->
         <div class="llm-row">
-          <div style="flex: 1; min-width: 200px;">
-            <label for="llm-profile-select">Translation LLM</label>
+          <div style="flex: 1; min-width: 220px;">
+            <label for="llm-profile-select">Translation Engine (Local Ollama Default or Cloud API)</label>
             <select id="llm-profile-select" class="input-control"></select>
           </div>
-          <div id="api-key-wrap" style="flex: 1; min-width: 180px; display: none;">
-            <label for="llm-apikey-input">API Key (Cloud LLM only)</label>
-            <input id="llm-apikey-input" type="password" class="input-control" placeholder="sk-... or AIza..." autocomplete="off" />
+          <div id="api-key-wrap" style="flex: 1; min-width: 190px; display: none;">
+            <label for="llm-apikey-input" id="llm-apikey-label">Cloud API Key</label>
+            <input id="llm-apikey-input" type="password" class="input-control" placeholder="Paste API key (or set in .env)" autocomplete="off" />
           </div>
           <div>
             <label>&nbsp;</label>
-            <button id="btn-toggle-add-llm" class="btn btn-secondary" type="button">+ Add Another LLM</button>
+            <button id="btn-toggle-add-llm" class="btn btn-secondary" type="button">+ Custom LLM</button>
           </div>
         </div>
 
         <!-- Optional Add LLM Drawer -->
         <div id="add-llm-drawer" class="add-llm-drawer" style="display: none;">
           <div class="form-row-3">
-            <input id="new-llm-name" type="text" class="input-control" placeholder="Profile Name (e.g. Local Qwen)" />
+            <input id="new-llm-name" type="text" class="input-control" placeholder="Profile Name (e.g. Local Qwen 2.5)" />
             <select id="new-llm-provider" class="input-control">
-              <option value="ollama">Local Ollama (:11434)</option>
+              <option value="ollama">Local Ollama — Onboard (:11434)</option>
               <option value="custom_openai">Local LM Studio / vLLM (:1234)</option>
-              <option value="openai">OpenAI / OpenRouter</option>
-              <option value="anthropic">Anthropic Claude</option>
-              <option value="gemini">Google Gemini</option>
+              <option value="gemini">Google Gemini (Cloud API)</option>
+              <option value="openai">OpenAI / OpenRouter (Cloud API)</option>
+              <option value="anthropic">Anthropic Claude (Cloud API)</option>
             </select>
-            <input id="new-llm-model" type="text" class="input-control" placeholder="Model (e.g. llama3.2:3b)" />
+            <input id="new-llm-model" type="text" class="input-control" placeholder="Model (e.g. llama3.2:3b or gemini-2.5-flash)" />
           </div>
           <div class="form-row-3" style="margin-top: 8px;">
             <input id="new-llm-url" type="text" class="input-control" value="http://127.0.0.1:11434" placeholder="Base URL" />
-            <input id="new-llm-key" type="password" class="input-control" placeholder="API Key (optional for local)" />
+            <input id="new-llm-key" type="password" class="input-control" placeholder="API Key (Cloud APIs only)" />
             <button id="btn-save-new-llm" class="btn btn-primary" type="button">Save LLM</button>
           </div>
         </div>
@@ -126,66 +129,84 @@
         </div>
       </section>
 
-      <!-- STEP 2: CREATED SKILLS, FILE LOCATIONS & TEST WITH LLM -->
+      <!-- STEP 2: CREATED SKILLS, FILE LOCATIONS & LIVE SKILL <-> LLM AGENT TESTBENCH -->
       <section class="card">
         <div class="step-header">
           <span class="step-number">2</span>
           <div>
-            <h2>Created Skills &amp; File Locations</h2>
-            <p class="text-muted">Every skill created below is saved on your PC and can be tested immediately with your LLM.</p>
+            <h2>Created Skills &amp; Live LLM ↔ Skill Testbench</h2>
+            <p class="text-muted">Inspect compiled <code>SKILL.md</code> &amp; MCP packages, then test how an onboard <strong>Ollama</strong> model or <strong>Cloud API (Gemini / OpenAI / Anthropic)</strong> drives the skill live.</p>
           </div>
         </div>
 
         <div id="created-skills-list" class="created-skills-list"></div>
 
         <!-- BUILT-IN SKILL TESTER WITH LLM -->
-        <div class="skill-tester-box" style="margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border);">
+        <div class="skill-tester-box" style="margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border-subtle);">
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px;">
             <div>
-              <h3 style="font-size: 1rem; margin: 0;">💬 Test Created Skill with Your LLM</h3>
-              <p class="text-muted small-text" style="margin: 2px 0 0 0;">Ask your LLM to use the created skill against a live application (e.g. TaskPulse on <code>http://127.0.0.1:8110</code>).</p>
+              <h3 style="font-size: 1rem; margin: 0;">💬 Test Created Skill with an LLM (Local Ollama or Cloud API)</h3>
+              <p class="text-muted small-text" style="margin: 2px 0 0 0;">Watch the 3-step loop: <strong>1)</strong> LLM reads <code>SKILL.md</code> &amp; chooses a tool → <strong>2)</strong> Executes against your live app (<code>:8110</code>) → <strong>3)</strong> Returns a grounded answer.</p>
             </div>
           </div>
 
           <div class="llm-row" style="margin-top: 8px;">
-            <div style="flex: 1; min-width: 180px;">
-              <label for="test-skill-select">Skill to Test</label>
+            <div style="flex: 1; min-width: 175px;">
+              <label for="test-skill-select">Compiled Skill</label>
               <select id="test-skill-select" class="input-control"></select>
             </div>
-            <div style="flex: 1; min-width: 180px;">
-              <label for="test-target-url">Target App URL (Optional)</label>
+            <div style="flex: 1; min-width: 175px;">
+              <label for="test-target-url">Live Target App URL</label>
               <input id="test-target-url" type="text" class="input-control" value="http://127.0.0.1:8110" />
             </div>
           </div>
 
-          <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px;">
-            <button type="button" class="btn btn-secondary btn-sm quick-test-prompt" data-prompt="List all tasks in the application">
+          <div class="llm-row" style="margin-top: 8px;">
+            <div style="flex: 1; min-width: 220px;">
+              <label for="test-llm-select">Skill Execution LLM (Ollama Onboard Default or Cloud API)</label>
+              <select id="test-llm-select" class="input-control"></select>
+            </div>
+            <div id="test-apikey-wrap" style="flex: 1; min-width: 190px; display: none;">
+              <label for="test-llm-apikey" id="test-apikey-label">Cloud API Key</label>
+              <input id="test-llm-apikey" type="password" class="input-control" placeholder="Paste Gemini / OpenAI / Claude key (or .env)" autocomplete="off" />
+            </div>
+          </div>
+
+          <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;">
+            <button type="button" class="btn btn-secondary btn-sm quick-test-prompt" data-prompt="List all tasks currently in the application and tell me which ones are still open">
               📋 List all tasks
             </button>
-            <button type="button" class="btn btn-secondary btn-sm quick-test-prompt" data-prompt="Add a HIGH priority task called 'Deploy Skill to Production' owned by Alex">
-              ➕ Add a new task in the app
+            <button type="button" class="btn btn-secondary btn-sm quick-test-prompt" data-prompt="Add a HIGH priority task called 'Deploy MCP Skill to Production' owned by Platform Ops">
+              ➕ Create a new task
             </button>
-            <button type="button" class="btn btn-secondary btn-sm quick-test-prompt" data-prompt="Calculate budget for 40 hours at $150/hr">
+            <button type="button" class="btn btn-secondary btn-sm quick-test-prompt" data-prompt="Calculate the project budget for 40 hours at $150/hr with 8.25% tax">
               💰 Calculate budget (40h @ $150/hr)
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm quick-test-prompt" data-prompt="Check the live application health and open task count">
+              🩺 Check app health
             </button>
           </div>
 
           <div style="display: flex; gap: 8px; margin-top: 10px;">
-            <input id="test-skill-prompt" type="text" class="input-control" value="List all tasks in the application" placeholder="Ask your LLM to perform an action using the skill..." />
+            <input id="test-skill-prompt" type="text" class="input-control" value="List all tasks currently in the application and tell me which ones are still open" placeholder="Ask your LLM to perform an action using the compiled skill..." />
             <button id="btn-run-skill-test" type="button" class="btn btn-primary" style="white-space: nowrap;">
-              ▶ Test Skill with LLM
+              ▶ Run Skill + LLM
             </button>
           </div>
 
-          <div id="skill-test-result" class="location-box" style="display: none; margin-top: 12px; flex-direction: column; align-items: stretch; gap: 8px;">
+          <div id="skill-test-result" class="location-box" style="display: none; margin-top: 12px; flex-direction: column; align-items: stretch; gap: 10px;">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
-              <strong id="test-result-tool" style="color: var(--emerald); font-size: 0.86rem;"></strong>
+              <strong id="test-result-tool" style="color: #6ee7b7; font-size: 0.86rem;"></strong>
               <span id="test-result-model" class="badge badge-emerald"></span>
             </div>
-            <div id="test-result-answer" style="font-size: 0.92rem; line-height: 1.5; background: rgba(15, 23, 42, 0.7); padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);"></div>
+
+            <div id="test-result-reasoning" style="font-size: 0.82rem; color: var(--text-secondary); background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); padding: 8px 10px; border-radius: 8px;"></div>
+
+            <div id="test-result-answer" style="font-size: 0.92rem; line-height: 1.55; background: rgba(15, 23, 42, 0.85); padding: 11px 13px; border-radius: 8px; border: 1px solid var(--border-strong);"></div>
+
             <details>
-              <summary class="text-muted small-text" style="cursor: pointer;">View Raw Skill Tool Output JSON</summary>
-              <pre id="test-result-json" class="code-viewer" style="max-height: 180px; margin-top: 6px;"></pre>
+              <summary class="text-muted small-text" style="cursor: pointer;">Inspect Full Skill ↔ LLM Exchange (Arguments &amp; Raw Tool JSON)</summary>
+              <pre id="test-result-json" class="code-viewer" style="max-height: 210px; margin-top: 6px;"></pre>
             </details>
           </div>
         </div>

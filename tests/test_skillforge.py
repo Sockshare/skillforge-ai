@@ -290,6 +290,62 @@ class TestMcpServerAndHttpApi(unittest.TestCase):
             delete_workspace_skill("order-tracker-app-skill")
             delete_workspace_skill("warehouse-audit-app-skill")
 
+    def test_dual_route_profiles_and_live_taskpulse_skill_execution(self) -> None:
+        import importlib.util
+        from http.server import ThreadingHTTPServer
+        from skillforge.llm_bridge import execute_skill_with_llm_test, list_llm_profiles
+        from skillforge.workspace import delete_workspace_skill, save_skill_to_workspace, scan_pc_application_folder
+
+        # 1. Verify Local Onboard Ollama is always #1 default route + Cloud API profiles exist
+        profiles = list_llm_profiles()
+        self.assertGreaterEqual(len(profiles), 4)
+        self.assertEqual(profiles[0]["group"], "local_onboard")
+        self.assertEqual(profiles[0]["provider"], "ollama")
+        profile_ids = {p["id"] for p in profiles}
+        self.assertIn("cloud-gemini", profile_ids)
+        self.assertIn("cloud-openai", profile_ids)
+        self.assertIn("cloud-anthropic", profile_ids)
+
+        # 2. Spin up bundled TaskPulse sample web app on an ephemeral port
+        tp_dir = ROOT_DIR / "examples" / "taskpulse-webapp"
+        spec_mod = importlib.util.spec_from_file_location("taskpulse_srv", tp_dir / "server.py")
+        assert spec_mod and spec_mod.loader
+        tp_module = importlib.util.module_from_spec(spec_mod)
+        spec_mod.loader.exec_module(tp_module)
+
+        tp_httpd = ThreadingHTTPServer(("127.0.0.1", 0), tp_module.TaskPulseHandler)
+        tp_port = tp_httpd.server_address[1]
+        tp_thread = threading.Thread(target=tp_httpd.serve_forever, daemon=True)
+        tp_thread.start()
+
+        try:
+            # 3. Scan & compile TaskPulse into an installed MCP Skill
+            scan_data = scan_pc_application_folder(str(tp_dir))
+            compiled = compile_skill(
+                {
+                    "name": "taskpulse-unit-test-skill",
+                    "custom_override": True,
+                    "blueprint": scan_data["combined_source"],
+                }
+            )
+            save_skill_to_workspace(compiled)
+
+            # 4. Execute budget calculation & task creation via Skill <-> LLM bridge against live TaskPulse
+            budget_res = execute_skill_with_llm_test(
+                skill_slug="taskpulse-unit-test-skill",
+                user_prompt="Calculate the project budget for 20 hours at $100/hr with 10% tax",
+                llm_config={"provider": "ollama", "model": "llama3.2:3b"},
+                target_app_url=f"http://127.0.0.1:{tp_port}",
+            )
+            self.assertTrue(budget_res["ok"])
+            self.assertEqual(budget_res["http_path"], "/api/calculate-budget")
+            self.assertEqual(budget_res["tool_output"]["grand_total_usd"], 2200.0)
+            self.assertTrue(budget_res["skill_md_loaded"])
+        finally:
+            delete_workspace_skill("taskpulse-unit-test-skill")
+            tp_httpd.shutdown()
+            tp_httpd.server_close()
+
 
 class TestZeroProprietaryContent(unittest.TestCase):
     def test_zero_proprietary_terms_across_entire_repository(self) -> None:

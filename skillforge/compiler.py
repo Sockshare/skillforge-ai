@@ -52,21 +52,30 @@ def introspect_webapp_source(raw_source: str, app_name: str = "webapp-agent-skil
                 seen.add(key)
                 routes.append({"method": method, "path": path, "source": "flask_route"})
 
-    # 3. Python http.server style: path == "/api/..."
+    # 3. Python http.server style: path == "/api/..." (infer exact method from enclosing do_GET / do_POST / do_DELETE)
+    handler_defs = [(hm.start(), hm.group(1).upper()) for hm in re.finditer(r"def\s+do_(GET|POST|PUT|DELETE|PATCH)\s*\(", raw_source, re.IGNORECASE)]
     for m in re.finditer(r'path\s*==\s*[\'"](/[^\'"]+)[\'"]', raw_source):
         path = m.group(1).strip()
-        method = "POST" if any(k in path for k in ("compile", "assess", "triage", "analyze", "verify", "rpc", "create", "update", "fulfill")) else "GET"
+        enclosing_methods = [hm_method for pos, hm_method in handler_defs if pos < m.start()]
+        if enclosing_methods:
+            method = enclosing_methods[-1]
+        else:
+            method = "POST" if any(k in path for k in ("compile", "assess", "triage", "analyze", "verify", "rpc", "create", "update", "fulfill", "calculate")) else "GET"
         key = f"{method} {path}"
         if key not in seen:
             seen.add(key)
             routes.append({"method": method, "path": path, "source": "http_server_handler"})
 
-    # 4. Frontend fetch("/api/...") calls
-    for m in re.finditer(r'fetch\(\s*[\'"](/[^\'"]+)[\'"]', raw_source):
+    # 4. Frontend fetch("/api/...", { method: "POST" }) calls
+    for m in re.finditer(r'fetch\(\s*[\'"](/[^\'"]+)[\'"](?:\s*,\s*\{([^}]{0,220})\})?', raw_source, re.DOTALL):
         path = m.group(1).strip()
-        if f"GET {path}" not in seen and f"POST {path}" not in seen:
-            seen.add(f"GET {path}")
-            routes.append({"method": "GET", "path": path, "source": "frontend_fetch"})
+        opts = m.group(2) or ""
+        m_meth = re.search(r'method\s*:\s*[\'"](GET|POST|PUT|DELETE|PATCH)[\'"]', opts, re.IGNORECASE)
+        method = m_meth.group(1).upper() if m_meth else "GET"
+        key = f"{method} {path}"
+        if key not in seen:
+            seen.add(key)
+            routes.append({"method": method, "path": path, "source": "frontend_fetch"})
 
     # 5. Extract Python AST functions & classes (just like how web apps are stripped into standalone skill engines)
     functions_extracted: List[Dict[str, Any]] = []

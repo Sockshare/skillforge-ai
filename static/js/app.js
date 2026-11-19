@@ -1,7 +1,7 @@
 /**
- * SkillForge AI — Clean, Minimal 2-Step UI Controller
- * Step 1: Browse or Upload an Application from Your PC + Translate with Progress Bar
- * Step 2: View Created Skills & Their File Locations on Disk
+ * SkillForge AI — 2-Step Application-to-Skill Studio & Live LLM ↔ Skill Testbench
+ * Primary Route: Local Onboard Ollama (:11434)
+ * Optional Cloud API Route: Google Gemini, OpenAI / OpenRouter, Anthropic Claude
  */
 
 let currentBrowsePath = "";
@@ -25,8 +25,12 @@ function setProgress(pct, message, visible = true) {
   if (pctEl) pctEl.textContent = `${pct}%`;
 }
 
+function isCloudProvider(provider) {
+  return provider === "gemini" || provider === "openai" || provider === "openrouter" || provider === "anthropic";
+}
+
 // ============================================================================
-// 1. PC FOLDER BROWSER & FILE UPLOAD
+// 1. PC FOLDER BROWSER, SAMPLE APP LOADER & FILE UPLOAD
 // ============================================================================
 async function browsePcFolder(targetPath = "") {
   const listEl = document.getElementById("pc-folder-list");
@@ -81,8 +85,37 @@ async function browsePcFolder(targetPath = "") {
     });
   } catch (_) {
     if (listEl) {
-      listEl.innerHTML = `<div class="text-muted" style="padding:8px;">Use <strong>📁 Upload App Folder</strong> or <strong>📄 Upload App File(s)</strong> above to select an application from your PC.</div>`;
+      listEl.innerHTML = `<div class="text-muted" style="padding:8px;">Click <strong>⚡ Load Sample App (TaskPulse :8110)</strong> or upload files above to get started.</div>`;
     }
+  }
+}
+
+function applyScannedApplication(data) {
+  selectedAppName = data.app_name;
+  selectedAppSource = data.combined_source;
+  document.getElementById("skill-name-input").value = data.skill_slug;
+  document.getElementById("selected-app-name").textContent = `${data.app_name} (${data.source_path})`;
+  document.getElementById("selected-app-meta").textContent =
+    `${data.files_scanned} file(s) scanned • ${data.routes_discovered.length} HTTP endpoints • ${data.functions_extracted.length} functions • ${data.tools_discovered.length} MCP tools ready`;
+  if (data.default_target_url && document.getElementById("test-target-url")) {
+    document.getElementById("test-target-url").value = data.default_target_url;
+  }
+  setProgress(100, `Loaded "${data.app_name}" — click "✨ Convert Application into LLM Skill" below.`, true);
+}
+
+async function loadBundledSampleApp() {
+  setProgress(25, "Loading bundled TaskPulse sample web application (:8110)...", true);
+  try {
+    const resp = await fetch("/api/fs/load-sample-app", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({})
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || "Failed to load sample app");
+    applyScannedApplication(data);
+  } catch (err) {
+    setProgress(0, `Error loading sample app: ${err.message}`, true);
   }
 }
 
@@ -97,14 +130,7 @@ async function selectPcApplicationPath(targetPath) {
     });
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || "Scan failed");
-
-    selectedAppName = data.app_name;
-    selectedAppSource = data.combined_source;
-    document.getElementById("skill-name-input").value = data.skill_slug;
-    document.getElementById("selected-app-name").textContent = `${data.app_name} (${data.source_path})`;
-    document.getElementById("selected-app-meta").textContent =
-      `${data.files_scanned} file(s) scanned • ${data.routes_discovered.length} endpoints • ${data.functions_extracted.length} functions • ${data.tools_discovered.length} tools ready`;
-    setProgress(100, `Loaded "${data.app_name}" — click "Convert Application into LLM Skill" below.`, true);
+    applyScannedApplication(data);
   } catch (err) {
     setProgress(0, `Error scanning folder: ${err.message}`, true);
   }
@@ -133,31 +159,31 @@ async function handleUploadedFiles(fileList) {
   document.getElementById("skill-name-input").value = slug;
   document.getElementById("selected-app-name").textContent = `${selectedAppName} (${files.length} uploaded file(s))`;
   document.getElementById("selected-app-meta").textContent = `Ready to convert into "${slug}"`;
-  setProgress(100, `Loaded ${files.length} file(s) — click "Convert Application into LLM Skill" below.`, true);
+  setProgress(100, `Loaded ${files.length} file(s) — click "✨ Convert Application into LLM Skill" below.`, true);
 }
 
 // ============================================================================
-// 2. TRANSLATE APPLICATION INTO SKILL (WITH PROGRESS BAR)
+// 2. TRANSLATE APPLICATION INTO SKILL (STEP 1)
 // ============================================================================
 async function convertApplicationToSkill() {
-  const skillSlug = document.getElementById("skill-name-input").value.trim() || "custom-app-skill";
+  if (!selectedAppSource) {
+    await loadBundledSampleApp();
+  }
+  const skillSlug = document.getElementById("skill-name-input").value.trim() || "taskpulse-webapp-skill";
   const selectEl = document.getElementById("llm-profile-select");
-  const prof = (selectEl && llmProfiles.find((p) => p.id === selectEl.value)) || llmProfiles[0] || { provider: "ollama", model: "llama3.2:3b", base_url: "http://127.0.0.1:11434" };
+  const prof = (selectEl && llmProfiles.find((p) => p.id === selectEl.value)) || llmProfiles[0] || {
+    provider: "ollama",
+    model: "llama3.2:3b",
+    base_url: "http://127.0.0.1:11434"
+  };
   const apiKey = document.getElementById("llm-apikey-input").value.trim();
   const btn = document.getElementById("btn-convert-skill");
 
-  if (!selectedAppSource) {
-    // If user hasn't clicked a folder yet, scan the currently browsed folder first
-    if (currentBrowsePath) {
-      await selectPcApplicationPath(currentBrowsePath);
-    }
-  }
-
   btn.disabled = true;
-  setProgress(20, "Step 1/3 — Extracting application endpoints, functions, and tool schemas...", true);
+  setProgress(20, "Step 1/3 — Extracting HTTP routes, functions, and MCP tool schemas...", true);
 
-  await new Promise((r) => setTimeout(r, 250));
-  setProgress(55, `Step 2/3 — Translating application into LLM Skill via ${prof.name || prof.provider}...`, true);
+  await new Promise((r) => setTimeout(r, 200));
+  setProgress(55, `Step 2/3 — Synthesizing SKILL.md via ${prof.name || prof.provider}...`, true);
 
   let compiled = null;
   try {
@@ -184,11 +210,11 @@ async function convertApplicationToSkill() {
       compiled = await resp.json();
     }
   } catch (_) {
-    // Fallback to fast local compile
+    // Fallback to deterministic AST/route compilation if LLM unavailable
   }
 
   if (!compiled) {
-    setProgress(75, "Step 2/3 — Compiling application routes and functions into skill files...", true);
+    setProgress(75, "Step 2/3 — Compiling application routes & functions deterministically...", true);
     const resp2 = await fetch("/api/compile", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -205,16 +231,16 @@ async function convertApplicationToSkill() {
     }
   }
 
-  setProgress(90, "Step 3/3 — Saving SKILL.md and registering tools with the built-in MCP Server...", true);
-  await loadCreatedSkills();
-  setProgress(100, `✓ Done! Skill "${skillSlug}" created and saved to disk.`, true);
+  setProgress(90, "Step 3/3 — Running 5-Gate verification & registering tools in MCP Hub...", true);
+  await loadCreatedSkills(skillSlug);
+  setProgress(100, `✓ Skill "${skillSlug}" compiled, verified (3-run SHA-256), and ready to test on the right!`, true);
   btn.disabled = false;
 }
 
 // ============================================================================
 // 3. CREATED SKILLS & FILE LOCATIONS ON DISK
 // ============================================================================
-async function loadCreatedSkills() {
+async function loadCreatedSkills(preferredSlug = "") {
   const listEl = document.getElementById("created-skills-list");
   try {
     const [wsResp, cfgResp] = await Promise.all([
@@ -237,19 +263,19 @@ async function loadCreatedSkills() {
     }
     listEl.innerHTML = `
       <div class="skill-card">
-        <div class="text-muted">No skills created yet. Select any application on your PC on the left and click <strong>✨ Convert Application into LLM Skill</strong>.</div>
+        <div class="text-muted">No skills compiled yet. Click <strong>⚡ Load Sample App (TaskPulse :8110)</strong> on the left, then click <strong>✨ Convert Application into LLM Skill</strong>.</div>
       </div>
     `;
     return;
   }
 
   if (testSelectEl) {
-    const prevVal = testSelectEl.value;
+    const targetVal = preferredSlug || testSelectEl.value;
     testSelectEl.innerHTML = workspaceSkills
       .map((s) => `<option value="${s.name}">${s.title || s.name} (${s.name})</option>`)
       .join("");
-    if (prevVal && workspaceSkills.some((s) => s.name === prevVal)) {
-      testSelectEl.value = prevVal;
+    if (targetVal && workspaceSkills.some((s) => s.name === targetVal)) {
+      testSelectEl.value = targetVal;
     }
   }
 
@@ -271,12 +297,12 @@ async function loadCreatedSkills() {
 
           <div class="location-box">
             <div>
-              <span class="location-label">Skill Folder &amp; SKILL.md Location on Your PC:</span>
+              <span class="location-label">Skill Folder &amp; SKILL.md Location:</span>
               <code class="location-path">${skillMdPath}</code>
               <div class="text-muted small-text">MCP Server: <code>${mcpPath}</code></div>
             </div>
             <button type="button" class="btn btn-secondary btn-sm copy-path-btn" data-path="${skillDir}">
-              📋 Copy Folder Path
+              📋 Copy Path
             </button>
           </div>
 
@@ -314,9 +340,9 @@ async function loadCreatedSkills() {
   listEl.querySelectorAll(".copy-path-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       navigator.clipboard.writeText(btn.dataset.path);
-      btn.textContent = "✓ Copied Path!";
+      btn.textContent = "✓ Copied!";
       setTimeout(() => {
-        btn.textContent = "📋 Copy Folder Path";
+        btn.textContent = "📋 Copy Path";
       }, 1400);
     });
   });
@@ -376,38 +402,48 @@ async function loadCreatedSkills() {
 }
 
 // ============================================================================
-// 4. BUILT-IN TEST SKILL WITH LLM
+// 4. LIVE 3-STAGE SKILL <-> LLM AGENT TESTBENCH
 // ============================================================================
 async function runSkillTestWithLlm() {
   const testSelectEl = document.getElementById("test-skill-select");
   const skillSlug = (testSelectEl && testSelectEl.value) || (workspaceSkills[0] && workspaceSkills[0].name) || "";
   const promptInput = document.getElementById("test-skill-prompt");
-  const prompt = (promptInput && promptInput.value.trim()) || "List all tasks in the application";
+  const prompt = (promptInput && promptInput.value.trim()) || "List all tasks currently in the application";
   const targetUrl = (document.getElementById("test-target-url") && document.getElementById("test-target-url").value.trim()) || "http://127.0.0.1:8110";
   const btn = document.getElementById("btn-run-skill-test");
   const resBox = document.getElementById("skill-test-result");
   const toolEl = document.getElementById("test-result-tool");
   const modelEl = document.getElementById("test-result-model");
+  const reasonEl = document.getElementById("test-result-reasoning");
   const ansEl = document.getElementById("test-result-answer");
   const jsonEl = document.getElementById("test-result-json");
 
   if (!skillSlug) {
     resBox.style.display = "flex";
-    toolEl.textContent = "No skill selected";
-    ansEl.textContent = "Convert an application on the left first so you have a skill to test.";
+    toolEl.textContent = "No compiled skill selected";
+    reasonEl.style.display = "none";
+    ansEl.textContent = "Convert an application on the left first so you have a compiled skill to test.";
     return;
   }
 
-  const selectEl = document.getElementById("llm-profile-select");
-  const prof = (selectEl && llmProfiles.find((p) => p.id === selectEl.value)) || llmProfiles[0] || { provider: "ollama", model: "llama3.2:3b", base_url: "http://127.0.0.1:11434" };
-  const apiKey = document.getElementById("llm-apikey-input").value.trim();
+  const execSelectEl = document.getElementById("test-llm-select") || document.getElementById("llm-profile-select");
+  const prof = (execSelectEl && llmProfiles.find((p) => p.id === execSelectEl.value)) || llmProfiles[0] || {
+    provider: "ollama",
+    model: "llama3.2:3b",
+    base_url: "http://127.0.0.1:11434"
+  };
+  const step2Key = document.getElementById("test-llm-apikey") ? document.getElementById("test-llm-apikey").value.trim() : "";
+  const step1Key = document.getElementById("llm-apikey-input") ? document.getElementById("llm-apikey-input").value.trim() : "";
+  const apiKey = step2Key || step1Key;
 
   btn.disabled = true;
-  btn.textContent = "⏳ Running Skill with LLM...";
+  btn.textContent = "⏳ Running Skill + LLM...";
   resBox.style.display = "flex";
-  toolEl.textContent = `Invoking skill "${skillSlug}"...`;
+  reasonEl.style.display = "block";
+  toolEl.textContent = `⏳ Step 1/3 — ${prof.provider}:${prof.model} reading ${skillSlug}/SKILL.md...`;
   modelEl.textContent = `${prof.provider}:${prof.model}`;
-  ansEl.textContent = "Calling skill tool and summarizing response with LLM...";
+  reasonEl.textContent = "Selecting MCP tool & arguments from SKILL.md...";
+  ansEl.textContent = "Executing live tool call and generating grounded LLM response...";
 
   try {
     const resp = await fetch("/api/skill/test-with-llm", {
@@ -429,64 +465,119 @@ async function runSkillTestWithLlm() {
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || "Skill test failed");
 
-    toolEl.textContent = `✓ Skill Tool Invoked: ${data.invoked_tool} → ${data.executed_against}`;
-    modelEl.textContent = `LLM: ${data.llm_provider} (${data.llm_model})`;
+    const modeBadge = data.routing_mode === "llm_agent" ? "LLM Agent Tool-Call" : "Deterministic Router";
+    toolEl.textContent = `✓ ${data.invoked_tool} → ${data.executed_against} (${data.latency_ms} ms)`;
+    modelEl.textContent = `${data.llm_provider.toUpperCase()} • ${data.llm_model} (${modeBadge})`;
+    reasonEl.textContent = `🧠 SKILL.md Routing: ${data.agent_reasoning || "Selected matching endpoint from SKILL.md."}`;
     ansEl.textContent = data.llm_answer || "Skill executed.";
-    jsonEl.textContent = JSON.stringify(data.tool_output, null, 2);
+    jsonEl.textContent = JSON.stringify(
+      {
+        routing_mode: data.routing_mode,
+        invoked_tool: data.invoked_tool,
+        executed_against: data.executed_against,
+        llm_generated_arguments: data.request_arguments,
+        live_tool_output: data.tool_output
+      },
+      null,
+      2
+    );
   } catch (err) {
-    toolEl.textContent = "Skill Test Error";
+    toolEl.textContent = "⚠️ Skill Execution / API Error";
+    reasonEl.textContent = "Check that your target app is running or that a valid API key is supplied for Cloud LLM providers.";
     ansEl.textContent = err.message;
   } finally {
     btn.disabled = false;
-    btn.textContent = "▶ Test Skill with LLM";
+    btn.textContent = "▶ Run Skill + LLM";
   }
 }
 
 // ============================================================================
-// 5. LLM CONNECTION MANAGER
+// 5. DUAL-ROUTE LLM CONNECTION MANAGER (LOCAL OLLAMA DEFAULT + CLOUD APIS)
 // ============================================================================
+function renderProfileOptions(selectEl, profiles, previousValue = "") {
+  if (!selectEl) return;
+  const localGroup = profiles.filter((p) => p.group === "local_onboard");
+  const cloudGroup = profiles.filter((p) => p.group !== "local_onboard");
+
+  let html = "";
+  if (localGroup.length > 0) {
+    html += `<optgroup label="🏠 Local Onboard Models (Ollama — Recommended Default)">`;
+    html += localGroup.map((p) => `<option value="${p.id}">${p.name}</option>`).join("");
+    html += `</optgroup>`;
+  }
+  if (cloudGroup.length > 0) {
+    html += `<optgroup label="☁️ Cloud Frontier APIs (Optional — API Key or .env)">`;
+    html += cloudGroup
+      .map((p) => `<option value="${p.id}">${p.name}${p.has_api_key ? " ✓ Key Ready" : ""}</option>`)
+      .join("");
+    html += `</optgroup>`;
+  }
+  selectEl.innerHTML = html;
+  if (previousValue && profiles.some((p) => p.id === previousValue)) {
+    selectEl.value = previousValue;
+  }
+}
+
+function bindApiKeyVisibility(selectEl, wrapId, labelId) {
+  if (!selectEl) return;
+  const update = () => {
+    const prof = llmProfiles.find((p) => p.id === selectEl.value);
+    const wrap = document.getElementById(wrapId);
+    const lbl = document.getElementById(labelId);
+    if (!wrap) return;
+    if (prof && isCloudProvider(prof.provider)) {
+      wrap.style.display = "block";
+      if (lbl) {
+        lbl.textContent = prof.has_api_key
+          ? `${prof.provider.toUpperCase()} API Key (✓ Env/Session Key Active — Optional Override)`
+          : `${prof.provider.toUpperCase()} API Key (Required for Cloud API)`;
+      }
+    } else {
+      wrap.style.display = "none";
+    }
+  };
+  selectEl.onchange = update;
+  update();
+}
+
 async function loadLlmProfiles() {
   const selectEl = document.getElementById("llm-profile-select");
+  const testLlmEl = document.getElementById("test-llm-select");
   const pill = document.getElementById("ollama-status-pill");
+  const prevStep1 = selectEl ? selectEl.value : "";
+  const prevStep2 = testLlmEl ? testLlmEl.value : "";
+
   try {
     const resp = await fetch("/api/llm/status");
     if (resp.ok) {
       const data = await resp.json();
       llmProfiles = data.profiles || [];
       if (data.ollama && data.ollama.connected) {
-        pill.textContent = `Live Ollama PID Active (${data.ollama.models.join(", ")})`;
+        pill.textContent = `🏠 Local Ollama Active (${data.ollama.models.join(", ")})`;
         pill.className = "badge badge-emerald";
       } else {
-        pill.textContent = llmProfiles.length > 0 ? `${llmProfiles.length} Custom LLM(s)` : "No Local Ollama Running on :11434";
+        pill.textContent = "🏠 Local Ollama Offline (:11434) — Cloud APIs Available";
         pill.className = "badge badge-accent";
       }
     }
   } catch (_) {
     llmProfiles = [];
-    pill.textContent = "No Local LLM Connected";
+    pill.textContent = "LLM Status Unavailable";
     pill.className = "badge badge-accent";
   }
 
-  if (llmProfiles.length === 0) {
-    selectEl.innerHTML = `<option value="">No LLM detected — click "+ Add Another LLM" to connect</option>`;
-  } else {
-    selectEl.innerHTML = llmProfiles
-      .map((p) => `<option value="${p.id}">${p.name}</option>`)
-      .join("");
-  }
-
-  const updateKeyVisibility = () => {
-    const prof = llmProfiles.find((p) => p.id === selectEl.value);
-    const wrap = document.getElementById("api-key-wrap");
-    if (wrap) {
-      wrap.style.display = prof && (prof.provider === "openai" || prof.provider === "anthropic" || prof.provider === "gemini") ? "block" : "none";
-    }
-  };
-  selectEl.onchange = updateKeyVisibility;
-  updateKeyVisibility();
+  renderProfileOptions(selectEl, llmProfiles, prevStep1);
+  renderProfileOptions(testLlmEl, llmProfiles, prevStep2);
+  bindApiKeyVisibility(selectEl, "api-key-wrap", "llm-apikey-label");
+  bindApiKeyVisibility(testLlmEl, "test-apikey-wrap", "test-apikey-label");
 }
 
 function initApp() {
+  const sampleBtn = document.getElementById("btn-load-sample-app");
+  if (sampleBtn) {
+    sampleBtn.addEventListener("click", loadBundledSampleApp);
+  }
+
   document.getElementById("btn-pc-up").addEventListener("click", () => browsePcFolder(currentBrowseParent));
   document.getElementById("btn-pc-go").addEventListener("click", () => {
     browsePcFolder(document.getElementById("pc-current-path").value.trim());
@@ -510,19 +601,48 @@ function initApp() {
     d.style.display = d.style.display === "none" ? "block" : "none";
   });
 
+  const provSelect = document.getElementById("new-llm-provider");
+  if (provSelect) {
+    provSelect.addEventListener("change", () => {
+      const urlInput = document.getElementById("new-llm-url");
+      const modelInput = document.getElementById("new-llm-model");
+      const defaults = {
+        ollama: ["http://127.0.0.1:11434", "llama3.2:3b"],
+        custom_openai: ["http://127.0.0.1:1234/v1", "qwen2.5-coder-7b"],
+        gemini: ["https://generativelanguage.googleapis.com/v1beta", "gemini-2.5-flash"],
+        openai: ["https://api.openai.com/v1", "gpt-4o-mini"],
+        anthropic: ["https://api.anthropic.com/v1", "claude-3-7-sonnet-latest"]
+      };
+      const pair = defaults[provSelect.value];
+      if (pair) {
+        if (urlInput) urlInput.value = pair[0];
+        if (modelInput && !modelInput.value.trim()) modelInput.placeholder = `Model (e.g. ${pair[1]})`;
+      }
+    });
+  }
+
   document.getElementById("btn-save-new-llm").addEventListener("click", async () => {
     const name = document.getElementById("new-llm-name").value.trim();
     const provider = document.getElementById("new-llm-provider").value;
-    const model = document.getElementById("new-llm-model").value.trim() || "llama3.2:3b";
+    const model = document.getElementById("new-llm-model").value.trim();
     const base_url = document.getElementById("new-llm-url").value.trim();
     const api_key = document.getElementById("new-llm-key").value.trim();
-    await fetch("/api/llm/profiles", {
+    const resp = await fetch("/api/llm/profiles", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, provider, model, base_url, api_key })
     });
     document.getElementById("add-llm-drawer").style.display = "none";
     await loadLlmProfiles();
+    if (resp.ok) {
+      const saved = await resp.json();
+      if (saved.profile && saved.profile.id) {
+        document.getElementById("llm-profile-select").value = saved.profile.id;
+        document.getElementById("test-llm-select").value = saved.profile.id;
+        bindApiKeyVisibility(document.getElementById("llm-profile-select"), "api-key-wrap", "llm-apikey-label");
+        bindApiKeyVisibility(document.getElementById("test-llm-select"), "test-apikey-wrap", "test-apikey-label");
+      }
+    }
   });
 
   document.getElementById("btn-convert-skill").addEventListener("click", convertApplicationToSkill);

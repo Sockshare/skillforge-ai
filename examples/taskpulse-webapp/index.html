@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TaskPulse — SkillForge Companion Test Web App (Port 8110)</title>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card: #111827;
+      --border: #1f2937;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #06b6d4;
+      --emerald: #10b981;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; padding: 28px; }
+    .container { max-width: 1100px; margin: 0 auto; }
+    .header { display: flex; justify-content: space-between; align-items: center; background: var(--card); border: 1px solid var(--border); padding: 20px 24px; border-radius: 12px; margin-bottom: 22px; }
+    .badge { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.35); padding: 4px 12px; border-radius: 999px; font-size: 0.78rem; font-weight: 700; }
+    .grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 20px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+    h2 { font-size: 1.05rem; margin-bottom: 12px; }
+    .task-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: #090d16; border: 1px solid #1e293b; border-radius: 8px; margin-bottom: 8px; }
+    .form-row { display: flex; gap: 8px; margin-top: 12px; }
+    input, select { background: #090d16; border: 1px solid #334155; color: #fff; padding: 9px 12px; border-radius: 8px; font-size: 0.85rem; width: 100%; }
+    button { background: var(--accent); color: #090d16; font-weight: 700; border: none; padding: 9px 16px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
+    pre { background: #090d16; border: 1px solid #1e293b; padding: 12px; border-radius: 8px; font-size: 0.8rem; color: #6ee7b7; margin-top: 12px; overflow: auto; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div>
+        <h1>⚡ TaskPulse — Skill Conversion Test Web App</h1>
+        <p style="color: var(--muted); font-size: 0.88rem; margin-top: 4px;">
+          Convert this web app into an LLM Skill in SkillForge AI (`http://localhost:8108`) and watch your Local Ollama or Cloud API LLM execute tasks and calculate budgets live!
+        </p>
+      </div>
+      <span id="health-badge" class="badge">LIVE ON PORT 8110</span>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <h2>Live Tasks Queue (`GET / POST /api/tasks`)</h2>
+          <button id="btn-refresh" type="button" style="background:#1e293b;color:#fff;padding:6px 12px;font-size:0.78rem;">🔄 Refresh</button>
+        </div>
+        <div id="tasks-list"></div>
+        <div class="form-row">
+          <input id="task-title" type="text" placeholder="New task title..." />
+          <select id="task-priority" style="max-width:130px;">
+            <option value="HIGH">HIGH</option>
+            <option value="MEDIUM">MEDIUM</option>
+            <option value="LOW">LOW</option>
+          </select>
+          <button id="btn-add-task" type="button">+ Add Task</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Project Budget Calculator (`POST /api/calculate-budget`)</h2>
+        <div style="display:grid;gap:10px;margin-top:10px;">
+          <div>
+            <label style="font-size:0.78rem;color:var(--muted);">Hours</label>
+            <input id="calc-hours" type="number" value="40" />
+          </div>
+          <div>
+            <label style="font-size:0.78rem;color:var(--muted);">Hourly Rate ($ USD)</label>
+            <input id="calc-rate" type="number" value="150" />
+          </div>
+          <div>
+            <label style="font-size:0.78rem;color:var(--muted);">Tax Rate (%)</label>
+            <input id="calc-tax" type="number" value="8.25" step="0.25" />
+          </div>
+          <button id="btn-calc" type="button">Calculate Budget</button>
+        </div>
+        <pre id="calc-result"></pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function loadTasks() {
+      const r = await fetch("/api/tasks");
+      const data = await r.json();
+      document.getElementById("tasks-list").innerHTML = data.tasks.map(t => `
+        <div class="task-item">
+          <div>
+            <strong><code>${t.id}</code> — ${t.title}</strong>
+            <div style="font-size:0.76rem;color:#94a3b8;">Owner: ${t.owner} • Status: ${t.status}</div>
+          </div>
+          <span class="badge">${t.priority}</span>
+        </div>
+      `).join("");
+    }
+    async function runCalc() {
+      const r = await fetch("/api/calculate-budget", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          hours: Number(document.getElementById("calc-hours").value),
+          hourly_rate: Number(document.getElementById("calc-rate").value),
+          tax_pct: Number(document.getElementById("calc-tax").value)
+        })
+      });
+      document.getElementById("calc-result").textContent = JSON.stringify(await r.json(), null, 2);
+    }
+    document.getElementById("btn-add-task").onclick = async () => {
+      const title = document.getElementById("task-title").value.trim();
+      if (!title) return;
+      await fetch("/api/tasks", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ title, priority: document.getElementById("task-priority").value, owner: "Web UI User" })
+      });
+      document.getElementById("task-title").value = "";
+      loadTasks();
+    };
+    document.getElementById("btn-refresh").onclick = loadTasks;
+    document.getElementById("btn-calc").onclick = runCalc;
+    loadTasks();
+    runCalc();
+    setInterval(loadTasks, 3000);
+  </script>
+</body>
+</html>

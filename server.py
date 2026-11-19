@@ -169,6 +169,20 @@ class SkillForgeRequestHandler(BaseHTTPRequestHandler):
             self._send_json({"error": f"Invalid JSON payload: {exc}"}, status=HTTPStatus.BAD_REQUEST)
             return
 
+        if route == "/api/fs/load-sample-app":
+            try:
+                sample_dir = ROOT_DIR / "examples" / "taskpulse-webapp"
+                sibling_dir = ROOT_DIR.parent / "skill-test-webapp"
+                chosen_dir = sample_dir if sample_dir.exists() else sibling_dir
+                scan_result = scan_pc_application_folder(str(chosen_dir))
+                scan_result["app_name"] = "TaskPulse"
+                scan_result["skill_slug"] = "taskpulse-webapp-skill"
+                scan_result["default_target_url"] = "http://127.0.0.1:8110"
+                self._send_json(scan_result)
+            except Exception as exc:  # noqa: BLE001
+                self._send_json({"error": f"Failed to load sample application: {exc}"}, status=HTTPStatus.BAD_REQUEST)
+            return
+
         if route == "/api/fs/scan-app":
             try:
                 app_path = body.get("path") or ""
