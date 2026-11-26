@@ -125,48 +125,84 @@ def resolve_provider_api_key(provider: str, explicit_key: str = "", profile_id: 
 
 def _ollama_model_priority(model_name: str) -> Tuple[int, str]:
     low = model_name.lower()
-    if low.startswith("llama3.2"):
+    if any(low.startswith(prefix) for prefix in ("qwen2.5-coder", "llama3.2", "qwen2.5", "llama3.1", "deepseek", "mistral", "gemma")):
         return (0, low)
-    if any(low.startswith(prefix) for prefix in ("qwen2.5", "llama3.1", "mistral", "gemma")):
-        return (1, low)
-    if "moondream" in low or "embed" in low:
-        return (3, low)
-    return (2, low)
+    if "moondream" in low or "vision" in low:
+        return (2, low)
+    if "embed" in low:
+        return (9, low)
+    return (1, low)
 
 
-def get_ollama_status(ollama_url: str = "http://127.0.0.1:11434") -> Dict[str, Any]:
-    """Probe http://127.0.0.1:11434/api/tags live and register installed onboard Ollama models."""
-    base = ollama_url.rstrip("/")
+def get_ollama_status(ollama_url: str = "") -> Dict[str, Any]:
+    """Probe Ollama /api/tags live and register all installed completion-capable models."""
+    env_host = (os.environ.get("OLLAMA_HOST") or "").strip()
+    if env_host and not env_host.startswith("http"):
+        env_host = f"http://{env_host}"
+    base = (ollama_url or env_host or "http://127.0.0.1:11434").rstrip("/")
     for k in [k for k, v in LLM_PROFILES.items() if v.get("auto_detected_ollama")]:
         LLM_PROFILES.pop(k, None)
 
     try:
-        req = urllib.request.Request(f"{base}/api/tags", headers={"User-Agent": "SkillForge-AI/2.1"})
+        req = urllib.request.Request(f"{base}/api/tags", headers={"User-Agent": "SkillForge-AI/3.0"})
         with urllib.request.urlopen(req, timeout=2.5) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-            raw_models: List[str] = [m.get("name", "") for m in data.get("models", []) if m.get("name")]
-            models = sorted(raw_models, key=_ollama_model_priority)
+            completion_models: List[str] = []
+            embedding_models: List[str] = []
+            model_details: List[Dict[str, Any]] = []
+
+            for m in data.get("models", []):
+                mname = (m.get("name") or "").strip()
+                if not mname:
+                    continue
+                caps = m.get("capabilities") or []
+                details = m.get("details") or {}
+                param_size = details.get("parameter_size") or ""
+                quant = details.get("quantization_level") or ""
+                is_embed_only = ("embed" in mname.lower()) or ("embedding" in caps and "completion" not in caps)
+                model_details.append(
+                    {
+                        "name": mname,
+                        "parameter_size": param_size,
+                        "quantization": quant,
+                        "capabilities": caps,
+                        "embedding_only": is_embed_only,
+                    }
+                )
+                if is_embed_only:
+                    embedding_models.append(mname)
+                else:
+                    completion_models.append(mname)
+
+            models = sorted(completion_models, key=_ollama_model_priority)
+            detail_by_name = {d["name"]: d for d in model_details}
             for mname in models:
+                d = detail_by_name.get(mname, {})
+                meta_tag = f" ({d['parameter_size']})" if d.get("parameter_size") else ""
                 pid = f"ollama-{re.sub(r'[^a-z0-9]+', '-', mname.lower()).strip('-')}"
                 LLM_PROFILES[pid] = {
                     "id": pid,
-                    "name": f"Local Ollama (Onboard) — {mname}",
+                    "name": f"Local Ollama (Installed) — {mname}{meta_tag}",
                     "provider": "ollama",
                     "base_url": base,
                     "model": mname,
                     "role": "Primary Local Onboard Model",
                     "group": "local_onboard",
                     "temperature": 0.0,
-                    "num_ctx": 2048,
+                    "num_ctx": 4096,
                     "has_api_key": False,
                     "auto_detected_ollama": True,
                 }
+            rec = models[0] if models else "llama3.2:3b"
             return {
-                "connected": len(models) > 0,
+                "connected": len(models) > 0 or len(embedding_models) > 0,
                 "provider": "ollama_local",
                 "endpoint": base,
                 "models": models,
-                "recommended_model": models[0] if models else "llama3.2:3b",
+                "embedding_models": embedding_models,
+                "model_details": model_details,
+                "recommended_model": rec,
+                "recommended_default": rec,
             }
     except Exception as exc:  # noqa: BLE001
         return {
@@ -174,7 +210,10 @@ def get_ollama_status(ollama_url: str = "http://127.0.0.1:11434") -> Dict[str, A
             "provider": "ollama_local",
             "endpoint": base,
             "models": [],
+            "embedding_models": [],
+            "model_details": [],
             "recommended_model": "llama3.2:3b",
+            "recommended_default": "llama3.2:3b",
             "error": str(exc),
         }
 

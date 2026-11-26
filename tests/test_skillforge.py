@@ -347,6 +347,297 @@ class TestMcpServerAndHttpApi(unittest.TestCase):
             tp_httpd.server_close()
 
 
+class TestEnterpriseSkillBuilderAndGuardrailsLab(unittest.TestCase):
+    def test_hundred_skill_progressive_router_and_context_savings(self) -> None:
+        from skillforge.enterprise_kit import get_hundred_skills_catalog, simulate_progressive_skill_router
+
+        catalog = get_hundred_skills_catalog()
+        self.assertEqual(len(catalog), 100)
+
+        routed = simulate_progressive_skill_router(
+            "Nightly billing invoice batch stalled with ORA-00060 row lock and 504 correlation timeout; check logs and draft Jira RCA",
+            top_k=3,
+            use_subagent_isolation=True,
+        )
+        self.assertEqual(routed["total_skills_in_registry"], 100)
+        self.assertEqual(len(routed["selected_skills"]), 3)
+        tc = routed["token_comparison"]
+        self.assertTrue(tc["naive_overflows_200k"])
+        self.assertGreater(tc["context_reduction_pct"], 95.0)
+        self.assertLess(tc["routed_progressive_total_tokens"], 10000)
+
+    def test_pretooluse_guardrails_sql_bash_secret_and_hitl(self) -> None:
+        from skillforge.enterprise_kit import evaluate_pre_tool_use_hook
+
+        allow_sql = evaluate_pre_tool_use_hook(
+            "OracleSQL",
+            {"sql": "SELECT sid, serial#, blocking_session FROM v$session WHERE blocking_session IS NOT NULL"},
+        )
+        self.assertTrue(allow_sql["allowed"])
+        self.assertEqual(allow_sql["exit_code"], 0)
+
+        block_sql = evaluate_pre_tool_use_hook("OracleSQL", {"sql": "DELETE FROM invoice_ledger WHERE status = 'STUCK'"})
+        self.assertFalse(block_sql["allowed"])
+        self.assertEqual(block_sql["exit_code"], 2)
+        self.assertEqual(block_sql["decision"], "BLOCK")
+
+        block_rm = evaluate_pre_tool_use_hook("Bash", {"command": "rm -rf /var/log/billing"})
+        self.assertFalse(block_rm["allowed"])
+        self.assertEqual(block_rm["exit_code"], 2)
+
+        block_env = evaluate_pre_tool_use_hook("Read", {"file_path": "/srv/app/.env"})
+        self.assertFalse(block_env["allowed"])
+        self.assertEqual(block_env["exit_code"], 2)
+
+        hitl_gate = evaluate_pre_tool_use_hook("Bash", {"command": "systemctl restart billing-worker"}, hitl_approved=False)
+        self.assertFalse(hitl_gate["allowed"])
+        self.assertEqual(hitl_gate["decision"], "REQUIRE_HITL")
+
+        hitl_ok = evaluate_pre_tool_use_hook("Bash", {"command": "systemctl restart billing-worker"}, hitl_approved=True)
+        self.assertTrue(hitl_ok["allowed"])
+        self.assertEqual(hitl_ok["decision"], "ALLOW_WITH_HITL")
+
+    def test_skill_creator_benchmark_and_trigger_optimizer(self) -> None:
+        from skillforge.enterprise_kit import optimize_trigger_description, run_skill_creator_eval_suite
+
+        b1 = run_skill_creator_eval_suite("billing-ops-diagnostics")
+        b2 = run_skill_creator_eval_suite("billing-ops-diagnostics")
+        self.assertEqual(b1["benchmark_sha256"], b2["benchmark_sha256"])
+        self.assertEqual(b1["benchmark"]["with_skill"]["mean_pass_rate_pct"], 100.0)
+        self.assertGreater(b1["benchmark"]["delta"]["token_reduction_pct"], 70.0)
+
+        opt = optimize_trigger_description("Helps debug billing issues and database problems.")
+        self.assertEqual(opt["split_summary"]["total_queries"], 20)
+        self.assertEqual(opt["held_out_test_accuracy_pct"], 100.0)
+        self.assertIn("Do not use for", opt["best_description"])
+
+    def test_http_and_mcp_kit_endpoints_and_starter_zip_self_tests(self) -> None:
+        httpd = create_server("127.0.0.1", 0)
+        port = httpd.server_address[1]
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        base = f"http://127.0.0.1:{port}"
+        try:
+            with urllib.request.urlopen(f"{base}/") as r:
+                ui_html = r.read().decode("utf-8")
+                self.assertIn("enterprise-skill-builder-lab", ui_html)
+                self.assertIn("Runtime Framework Guardrails Lab", ui_html)
+                self.assertIn("100-Skill Context Router", ui_html)
+
+            with urllib.request.urlopen(f"{base}/api/kit/overview") as r:
+                ov = json.loads(r.read().decode("utf-8"))
+                self.assertEqual(len(ov["topics"]), 6)
+                self.assertEqual(ov["hundred_skills_count"], 100)
+                self.assertEqual(len(ov["starter_kit_files"]), 14)
+
+            ops_req = urllib.request.Request(
+                f"{base}/api/fs/load-billing-ops-app",
+                data=b"{}",
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(ops_req) as r:
+                ops_scan = json.loads(r.read().decode("utf-8"))
+                self.assertEqual(ops_scan["app_name"], "BillingOps Diagnostics")
+                self.assertGreaterEqual(len(ops_scan["routes_discovered"]), 5)
+
+            zip_req = urllib.request.Request(
+                f"{base}/api/kit/starter-bundle.zip",
+                data=json.dumps({"project_name": "telecom-billing-ops"}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(zip_req) as r:
+                zbytes = r.read()
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                with zipfile.ZipFile(io.BytesIO(zbytes), "r") as zf:
+                    zf.extractall(tmpdir)
+                kit_root = Path(tmpdir) / "telecom-billing-ops-agent-kit"
+                self.assertTrue((kit_root / "CLAUDE.md").is_file())
+                self.assertTrue((kit_root / "AGENTS.md").is_file())
+                self.assertTrue((kit_root / ".claude/settings.json").is_file())
+                self.assertTrue((kit_root / "docs/COMPLETE_ARCHITECTURE_GUIDE.md").is_file())
+                proc = subprocess.run(
+                    [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-v"],
+                    cwd=str(kit_root),
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                self.assertIn("OK", proc.stderr + proc.stdout)
+
+            # Verify new MCP JSON-RPC 2.0 tools
+            mcp_guard = process_mcp_jsonrpc(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 99,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "evaluate_pretooluse_guardrail",
+                        "arguments": {"tool_name": "OracleSQL", "tool_input": {"sql": "DROP TABLE invoices"}},
+                    },
+                }
+            )
+            parsed_guard = json.loads(mcp_guard["result"]["content"][0]["text"])
+            self.assertFalse(parsed_guard["allowed"])
+            self.assertEqual(parsed_guard["exit_code"], 2)
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+
+
+class TestSkillCreatorOneToOneAndOrchestrator(unittest.TestCase):
+    def test_ollama_discovery_headless_decoupler_and_real_skill_creator_loop(self) -> None:
+        import shutil
+        from skillforge.llm_bridge import get_ollama_status
+        from skillforge.skill_creator_studio import (
+            EVAL_WORKSPACES_DIR,
+            build_standalone_headless_skill,
+            interview_skill_intent,
+            package_standalone_skill_archive,
+            run_real_skill_creator_evals,
+            submit_human_feedback_and_iterate,
+            update_skill_frontmatter_description,
+        )
+        from skillforge.workspace import delete_workspace_skill
+
+        ollama = get_ollama_status()
+        self.assertIn("connected", ollama)
+        self.assertIn("models", ollama)
+        self.assertIn("model_details", ollama)
+
+        webapp_code = (ROOT_DIR / "examples" / "billing-ops-webapp" / "server.py").read_text(encoding="utf-8")
+        interview = interview_skill_intent(
+            goal="Audit billing database locks and service ACL scope in production",
+            app_source=webapp_code,
+            trigger_hints="ORA-00060 locks, production scope check",
+        )
+        self.assertGreaterEqual(len(interview["clarifying_questions"]), 2)
+        self.assertGreaterEqual(len(interview["proposed_evals"]), 2)
+
+        test_slug = "unit-headless-billing-verifier"
+        try:
+            built = build_standalone_headless_skill(
+                {
+                    "name": test_slug,
+                    "title": "Unit Headless Billing Verifier",
+                    "webapp_source": webapp_code,
+                    "stage_role": "discovery",
+                }
+            )
+            man = built["manifest"]
+            self.assertEqual(man["mode"], "standalone_headless_cli")
+            self.assertTrue(man["determinism"]["deterministic"])
+            self.assertGreaterEqual(len(man["extracted_webapp_functions"]), 2)
+            self.assertIn("BUILD.bazel", built["artifacts"])
+            self.assertIn("INSTALL.md", built["artifacts"])
+            self.assertIn("evals/evals.json", built["artifacts"])
+
+            # Run real subprocess evals (Iteration 1: with_skill vs without_skill)
+            ev1 = run_real_skill_creator_evals(test_slug)
+            self.assertEqual(ev1["iteration"], 1)
+            self.assertEqual(ev1["benchmark"]["with_skill"]["pass_rate"]["mean"], 1.0)
+            self.assertTrue(Path(ev1["viewer_html_path"]).is_file())
+            self.assertTrue((Path(ev1["workspace_dir"]) / "benchmark.json").is_file())
+
+            # Submit human feedback.json -> snapshot skill -> refine SKILL.md -> run Iteration 2 against old_skill
+            ev2 = submit_human_feedback_and_iterate(
+                skill_slug=test_slug,
+                iteration=1,
+                reviews=[{"run_id": "eval-0-with_skill", "feedback": "Include concise executive summary bullets at top."}],
+            )
+            self.assertEqual(ev2["iteration"], 2)
+            self.assertEqual(ev2["benchmark"]["baseline"]["label"], "old_skill")
+            self.assertTrue((Path(ev1["workspace_dir"]) / "feedback.json").is_file())
+
+            upd = update_skill_frontmatter_description(
+                test_slug,
+                "Updated pushy trigger description. Use when auditing production billing locks. Do not use for CSS.",
+            )
+            self.assertIn("Do not use for CSS", upd["updated_description"])
+
+            skill_zip = package_standalone_skill_archive(test_slug)
+            with zipfile.ZipFile(io.BytesIO(skill_zip), "r") as zf:
+                znames = zf.namelist()
+                self.assertIn(f"{test_slug}/SKILL.md", znames)
+                self.assertIn(f"{test_slug}/BUILD.bazel", znames)
+        finally:
+            delete_workspace_skill(test_slug)
+            ws_eval = EVAL_WORKSPACES_DIR / f"{test_slug}-workspace"
+            if ws_eval.exists():
+                shutil.rmtree(ws_eval)
+
+    def test_multi_skill_sequential_orchestrator_and_two_run_determinism(self) -> None:
+        import shutil
+        from skillforge.orchestrator_builder import (
+            PIPELINE_RUNS_DIR,
+            REFERENCE_COMPLIANCE_STAGES,
+            build_orchestrator_suite_zip,
+            execute_orchestrator_pipeline,
+            provision_compliance_reference_suite,
+        )
+        from skillforge.workspace import SKILLS_WORKSPACE_DIR, delete_workspace_skill
+
+        try:
+            prov = provision_compliance_reference_suite()
+            self.assertEqual(prov["total_skills_provisioned"], 6)
+            orch_slug = prov["orchestrator"]["name"]
+            self.assertEqual(orch_slug, "compliance-master-orchestrator")
+
+            # 1. Execute full sequential pipeline & verify Stage 1 -> Stage 2..5 handoff + Master Report
+            full_run = execute_orchestrator_pipeline(
+                pipeline_slug=orch_slug,
+                target_app="PaymentsCore",
+                component_ids="10401,10402",
+                run_mode="full_workflow",
+            )
+            self.assertTrue(full_run["ok"])
+            self.assertEqual(len(full_run["stages_executed"]), 5)
+            self.assertGreaterEqual(full_run["verified_handoff_count"], 3)
+            self.assertEqual(len(full_run["master_report"]["dataset_sha256"]), 64)
+            self.assertIn("mermaid", full_run["master_markdown_preview"])
+
+            # 2. Execute Two-Run Independent SHA-256 Determinism Proof (Run A == Run B)
+            two_run = execute_orchestrator_pipeline(
+                pipeline_slug=orch_slug,
+                target_app="PaymentsCore",
+                component_ids="10401,10402",
+                run_mode="two_run_determinism",
+            )
+            self.assertTrue(two_run["deterministic"])
+            self.assertEqual(two_run["verdict"], "CRYPTOGRAPHICALLY_IDENTICAL_PASS")
+            self.assertEqual(two_run["dataset_sha256_run_a"], two_run["dataset_sha256_run_b"])
+            self.assertEqual(two_run["report_sha256_run_a"], two_run["report_sha256_run_b"])
+            self.assertEqual(len(two_run["stage_hash_comparisons"]), 5)
+            self.assertTrue(all(s["identical"] for s in two_run["stage_hash_comparisons"]))
+
+            # 3. Verify Unified 1-Command CLI Launcher (`./compliance-master-cli list`)
+            launcher_path = SKILLS_WORKSPACE_DIR / orch_slug / "compliance-master-cli"
+            cli_proc = subprocess.run(
+                [sys.executable, str(launcher_path), "list"],
+                cwd=str(SKILLS_WORKSPACE_DIR / orch_slug),
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            listed = json.loads(cli_proc.stdout)
+            self.assertEqual(len(listed["stages"]), 5)
+
+            # 4. Verify downloadable suite .zip includes orchestrator + all 5 member skills
+            suite_zip = build_orchestrator_suite_zip(orch_slug)
+            with zipfile.ZipFile(io.BytesIO(suite_zip), "r") as zf:
+                znames = zf.namelist()
+                self.assertTrue(any("compliance-master-orchestrator/SKILL.md" in n for n in znames))
+                self.assertTrue(any("service-acl-scope-discovery/SKILL.md" in n for n in znames))
+                self.assertTrue(any("vuln-sla-and-7gate-validator/SKILL.md" in n for n in znames))
+        finally:
+            delete_workspace_skill("compliance-master-orchestrator")
+            for st in REFERENCE_COMPLIANCE_STAGES:
+                delete_workspace_skill(st["name"])
+            if PIPELINE_RUNS_DIR.exists():
+                shutil.rmtree(PIPELINE_RUNS_DIR)
+
+
 class TestZeroProprietaryContent(unittest.TestCase):
     def test_zero_proprietary_terms_across_entire_repository(self) -> None:
         decoded_forbidden = [base64.b64decode(b).decode("utf-8").lower() for b in FORBIDDEN_B64_TERMS]
@@ -356,7 +647,7 @@ class TestZeroProprietaryContent(unittest.TestCase):
         for path in ROOT_DIR.rglob("*"):
             if not path.is_file():
                 continue
-            if any(part in path.parts for part in (".git", "__pycache__", "skills_workspace")):
+            if any(part in path.parts for part in (".git", "__pycache__", "skills_workspace", "eval_workspaces", "pipeline_runs")):
                 continue
             if path.name == "server.log":
                 continue
@@ -377,3 +668,4 @@ class TestZeroProprietaryContent(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

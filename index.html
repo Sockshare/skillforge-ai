@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SkillForge AI — Local Ollama &amp; Cloud LLM Application-to-Skill Studio</title>
+  <title>SkillForge AI — 1:1 Skill Builder, Headless CLI Synthesizer, Multi-Skill Orchestrator &amp; Local Ollama Studio</title>
   <link rel="stylesheet" href="static/css/styles.css" />
 </head>
 <body>
@@ -13,7 +13,7 @@
         <div class="brand-logo" aria-hidden="true">SF</div>
         <div>
           <h1 class="brand-title">SkillForge AI</h1>
-          <p class="brand-subtitle">Turn any Web Application into a Verified <code>SKILL.md</code> &amp; MCP Server — Powered by Local Onboard Ollama (Default) or Cloud LLM APIs</p>
+          <p class="brand-subtitle">1:1 <code>skill-creator</code> Workbench, Headless Web-App Decoupler &amp; Multi-Skill Sequential Orchestrator — Powered by Any Installed Local Ollama Model</p>
         </div>
       </div>
       <div class="topbar-actions">
@@ -26,6 +26,43 @@
   </header>
 
   <main class="container main-content">
+    <!-- GLOBAL MULTI-PROVIDER LLM ENGINE BAR (LOCAL OLLAMA + GOOGLE GEMINI + CLAUDE + OPENAI) -->
+    <section class="card" style="margin-bottom: 22px; padding: 16px 20px; border-color: rgba(16, 185, 129, 0.35);">
+      <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+        <div style="min-width: 195px; flex: 1;">
+          <label for="global-llm-provider" style="display:block;font-size:0.76rem;font-weight:700;color:#6ee7b7;margin-bottom:4px;">🏛️ Skill Builder LLM Provider</label>
+          <select id="global-llm-provider" class="input-control">
+            <option value="ollama">🏠 Local Ollama (Any Installed Model)</option>
+            <option value="gemini">✨ Google API Models (Gemini)</option>
+            <option value="anthropic">🟣 Anthropic Claude API</option>
+            <option value="openai">🟢 OpenAI API</option>
+          </select>
+        </div>
+        <div id="global-ollama-url-wrap" style="min-width: 195px; flex: 1;">
+          <label for="global-ollama-url" style="display:block;font-size:0.76rem;font-weight:700;color:#6ee7b7;margin-bottom:4px;">Ollama Endpoint</label>
+          <input id="global-ollama-url" type="text" class="input-control" value="http://127.0.0.1:11434" />
+        </div>
+        <div style="min-width: 240px; flex: 1.3;">
+          <label for="global-ollama-model" style="display:block;font-size:0.76rem;font-weight:700;color:#6ee7b7;margin-bottom:4px;">Active Model</label>
+          <select id="global-ollama-model" class="input-control"></select>
+        </div>
+        <div style="min-width: 190px; flex: 0.9;">
+          <label for="global-ollama-custom-tag" style="display:block;font-size:0.76rem;font-weight:700;color:var(--text-secondary);margin-bottom:4px;">Custom Model Override (Opt)</label>
+          <input id="global-ollama-custom-tag" type="text" class="input-control" placeholder="e.g. gemini-2.5-pro or qwen3:32b" />
+        </div>
+        <div id="global-cloud-key-wrap" style="min-width: 205px; flex: 1; display: none;">
+          <label for="global-cloud-apikey" style="display:block;font-size:0.76rem;font-weight:700;color:#fcd34d;margin-bottom:4px;">Cloud API Key (or .env)</label>
+          <input id="global-cloud-apikey" type="password" class="input-control" placeholder="Paste Gemini / Claude / OpenAI key" autocomplete="off" />
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button id="btn-refresh-ollama-models" type="button" class="btn btn-secondary">↻ Refresh Models</button>
+        </div>
+      </div>
+      <div id="global-ollama-meta" class="text-muted small-text" style="margin-top: 8px;">
+        Supports <strong>Local Ollama</strong> (auto-discovers all installed models) AND closed-source APIs (<strong>Google Gemini</strong>, <strong>Anthropic Claude</strong>, <strong>OpenAI</strong>) across Intent Interviews, Web-App Translation, Evals, <code>feedback.json</code> Rewrites, and 60/40 Trigger Optimization.
+      </div>
+    </section>
+
     <div class="workspace-layout">
       <!-- STEP 1: SELECT APPLICATION & CONVERT -->
       <section class="card">
@@ -33,7 +70,7 @@
           <span class="step-number">1</span>
           <div>
             <h2>Select Application &amp; Compile into LLM Skill</h2>
-            <p class="text-muted">Browse an application on your PC (or click <strong>TaskPulse</strong>) and compile it using an onboard <strong>Local Ollama</strong> model or an optional <strong>Cloud API</strong>.</p>
+            <p class="text-muted">Browse an application on your PC (or click <strong>TaskPulse</strong> / <strong>BillingOps</strong>) and compile either a <strong>Live Web-App MCP Skill</strong> OR a <strong>100% Standalone Headless CLI Skill</strong> (zero web server required).</p>
           </div>
         </div>
 
@@ -41,6 +78,9 @@
         <div class="upload-bar">
           <button id="btn-load-sample-app" class="btn btn-primary btn-sm" type="button" title="Load the bundled TaskPulse sample web app (Port 8110)">
             ⚡ Load Sample App (TaskPulse :8110)
+          </button>
+          <button id="btn-load-billing-ops-app" class="btn btn-secondary btn-sm" type="button" title="Load the bundled BillingOps Linux/Oracle/Microservices Diagnostics web app (Port 8115)">
+            🩺 Load BillingOps App (:8115)
           </button>
           <label class="btn btn-secondary btn-sm" style="cursor: pointer;">
             📁 Upload App Folder
@@ -113,10 +153,15 @@
           </div>
         </div>
 
-        <!-- CONVERT BUTTON & PROGRESS BAR -->
-        <button id="btn-convert-skill" class="btn btn-primary btn-convert-hero" type="button">
-          ✨ Convert Application into LLM Skill
-        </button>
+        <!-- DUAL COMPILATION BUTTONS -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px;">
+          <button id="btn-convert-skill" class="btn btn-primary btn-convert-hero" style="margin-top:0;" type="button">
+            ✨ Convert into Live Web-App MCP Skill
+          </button>
+          <button id="btn-decouple-standalone-skill" class="btn btn-secondary btn-convert-hero" style="margin-top:0; border-color: rgba(16, 185, 129, 0.55); color: #6ee7b7;" type="button">
+            ⚡ Decouple into Standalone Headless CLI Skill
+          </button>
+        </div>
 
         <div id="translation-progress-wrap" class="progress-wrap" style="display: none;">
           <div class="progress-top">
@@ -135,7 +180,7 @@
           <span class="step-number">2</span>
           <div>
             <h2>Created Skills &amp; Live LLM ↔ Skill Testbench</h2>
-            <p class="text-muted">Inspect compiled <code>SKILL.md</code> &amp; MCP packages, then test how an onboard <strong>Ollama</strong> model or <strong>Cloud API (Gemini / OpenAI / Anthropic)</strong> drives the skill live.</p>
+            <p class="text-muted">Inspect compiled <code>SKILL.md</code>, headless CLI scripts &amp; MCP packages, then test how your selected <strong>Ollama</strong> model or <strong>Cloud API</strong> drives the skill live.</p>
           </div>
         </div>
 
@@ -212,6 +257,322 @@
         </div>
       </section>
     </div>
+
+    <!-- STEP 3: 1:1 SKILL-CREATOR WORKBENCH (INTENT INTERVIEW, HEADLESS CLI SYNTHESIS, REAL SUBPROCESS EVALS & FEEDBACK LOOP) -->
+    <section class="card lab-full-card" id="skill-creator-workbench">
+      <div class="step-header">
+        <span class="step-number">3</span>
+        <div style="flex: 1;">
+          <h2>Skill Builder (<code>skill-creator</code>) Studio — Interview, Build, Eval &amp; Iterate</h2>
+          <p class="text-muted">Use Skill Builder the exact way <code>skill-creator</code> works for any general user: <strong>1) Describe your skill or load an app</strong> → <strong>2) Interview with your LLM</strong> → <strong>3) Build standalone <code>SKILL.md</code> + CLI scripts</strong> → <strong>4) Run paired <code>with_skill</code> vs. baseline evals</strong> → <strong>5) Review &amp; iterate via <code>feedback.json</code></strong> → <strong>6) Optimize trigger description &amp; export <code>.skill</code></strong> (ready to drop straight into <strong>AiLabs</strong> or Claude Code).</p>
+        </div>
+      </div>
+
+      <div class="llm-row">
+        <div style="flex: 2; min-width: 260px;">
+          <label for="sc-goal-input">1. What Should Your Skill Do? (Any Workflow, App, or Automation)</label>
+          <input id="sc-goal-input" type="text" class="input-control" value="Analyze project files or API configurations, filter out dev/test noise, and generate structured HTML, Markdown, and CSV reports" />
+        </div>
+        <div style="flex: 1; min-width: 200px;">
+          <label for="sc-trigger-hints">When Should the Agent Trigger It?</label>
+          <input id="sc-trigger-hints" type="text" class="input-control" value="project audit, configuration review, automated report generation" />
+        </div>
+        <div style="min-width: 150px;">
+          <label for="sc-stage-role">Workflow Role</label>
+          <select id="sc-stage-role" class="input-control">
+            <option value="audit" selected>Standalone Skill</option>
+            <option value="discovery">Stage 1: Upstream Discovery</option>
+            <option value="uar">Downstream: Access / Group Check</option>
+            <option value="nope">Downstream: Policy Lockdown</option>
+            <option value="provenance">Downstream: Provenance Check</option>
+            <option value="vuln">Downstream: SLA &amp; Triage</option>
+          </select>
+        </div>
+        <div>
+          <label>&nbsp;</label>
+          <button id="btn-sc-interview" type="button" class="btn btn-secondary">🧠 1. Interview Intent</button>
+        </div>
+      </div>
+
+      <div class="llm-row">
+        <div style="min-width: 220px;">
+          <label for="sc-slug-input">Skill Folder Name (Slug)</label>
+          <input id="sc-slug-input" type="text" class="input-control" value="automated-project-reporter" />
+        </div>
+        <div style="flex: 1; min-width: 280px;">
+          <label for="sc-desc-input">YAML Frontmatter Trigger Description (<code>Use when... Do not use for...</code>)</label>
+          <input id="sc-desc-input" type="text" class="input-control" value="Standalone CLI and reporting skill that inspects project configurations, excludes dev/test noise, and generates HTML, Markdown, CSV, and SHA-256 verified JSON outputs. Use when the user asks for an automated project audit or structured report. Do not use for UI styling." />
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button id="btn-sc-build-standalone" type="button" class="btn btn-primary">🔨 2. Build Skill</button>
+          <button id="btn-sc-run-real-evals" type="button" class="btn btn-secondary">▶ 3. Run Evals</button>
+          <button id="btn-sc-opt-desc" type="button" class="btn btn-secondary">🎯 4. Optimize Trigger</button>
+          <button id="btn-sc-download-skill" type="button" class="btn btn-secondary">⬇ 5. Export .skill</button>
+        </div>
+      </div>
+
+      <div id="sc-interview-output" style="display: none; margin-bottom: 12px;"></div>
+      <div id="sc-build-output" style="display: none; margin-bottom: 12px;"></div>
+      <div id="sc-real-evals-output"></div>
+    </section>
+
+    <!-- STEP 4: MULTI-SKILL SEQUENTIAL ORCHESTRATION LAYER, MASTER REPORTER & TWO-RUN SHA-256 DETERMINISM STUDIO -->
+    <section class="card lab-full-card" id="multi-skill-orchestrator-studio">
+      <div class="step-header">
+        <span class="step-number">4</span>
+        <div style="flex: 1;">
+          <h2>Multi-Skill Workflow Orchestrator (Optional: Chain Multiple Skills Together)</h2>
+          <p class="text-muted">Chain any standalone skills you built above into a sequential pipeline: <strong>Stage 1</strong> writes verified handoffs on disk → <strong>Stages 2..N</strong> consume <code>--handoff-in</code> → <strong>Master Reporter</strong> synthesizes a unified Executive Report + <code>SHA-256</code> Two-Run Determinism proof.</p>
+        </div>
+        <div>
+          <button id="btn-orch-provision-suite" type="button" class="btn btn-secondary btn-sm">
+            🚀 Load Example 6-Skill Pipeline
+          </button>
+        </div>
+      </div>
+
+      <!-- Custom Orchestrator Compiler Row -->
+      <div class="llm-row">
+        <div style="min-width: 240px;">
+          <label for="orch-custom-name">Orchestrator Skill Name</label>
+          <input id="orch-custom-name" type="text" class="input-control" value="compliance-master-orchestrator" />
+        </div>
+        <div style="flex: 1; min-width: 300px;">
+          <label for="orch-stage-slugs">Ordered Stage Skill Slugs (Comma-Separated)</label>
+          <input id="orch-stage-slugs" type="text" class="input-control" value="service-acl-scope-discovery, uar-access-group-auditor, zero-standing-privilege-checker, prod-build-provenance-verifier, vuln-sla-and-7gate-validator" />
+        </div>
+        <div>
+          <label>&nbsp;</label>
+          <button id="btn-orch-compile" type="button" class="btn btn-secondary">🔗 Compile Orchestrator &amp; Unified CLI</button>
+        </div>
+      </div>
+
+      <!-- Execute Sequential Pipeline / Two-Run Determinism Row -->
+      <div class="llm-row" style="padding-top: 10px; border-top: 1px solid var(--border-subtle);">
+        <div style="min-width: 230px;">
+          <label for="orch-select-pipeline">Compiled Orchestrator</label>
+          <select id="orch-select-pipeline" class="input-control">
+            <option value="compliance-master-orchestrator">compliance-master-orchestrator</option>
+          </select>
+        </div>
+        <div style="min-width: 170px;">
+          <label for="orch-target-app">Target Project / App</label>
+          <input id="orch-target-app" type="text" class="input-control" value="PaymentsCore" />
+        </div>
+        <div style="min-width: 160px;">
+          <label for="orch-components">Component IDs (Opt)</label>
+          <input id="orch-components" type="text" class="input-control" value="10401,10402" />
+        </div>
+        <div style="min-width: 140px;">
+          <label for="orch-stage-selector">Single Stage # (Opt)</label>
+          <input id="orch-stage-selector" type="text" class="input-control" placeholder="e.g. 1" />
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button id="btn-orch-run-full" type="button" class="btn btn-primary">▶ Run Full Pipeline</button>
+          <button id="btn-orch-run-stage" type="button" class="btn btn-secondary">▶ Run Stage</button>
+          <button id="btn-orch-verify-tworun" type="button" class="btn btn-secondary" style="border-color:rgba(16,185,129,0.55);color:#6ee7b7;">🔐 Verify Determinism (Run A == Run B)</button>
+          <button id="btn-orch-download-zip" type="button" class="btn btn-secondary">📦 Export Suite (.zip)</button>
+        </div>
+      </div>
+
+      <div id="orch-execution-output"></div>
+    </section>
+
+    <!-- OPTIONAL COLLAPSIBLE REFERENCE DRAWER -->
+    <details style="margin-top: 18px;">
+      <summary class="btn btn-secondary" style="cursor: pointer; width: 100%; justify-content: flex-start;">
+        📚 Optional Reference Drawer: Architecture Guide, Guardrail Hooks, 100-Skill Router &amp; Starter Templates
+      </summary>
+    <section class="card lab-full-card" id="enterprise-skill-builder-lab" style="margin-top: 10px;">
+      <div class="step-header">
+        <span class="step-number">R</span>
+        <div style="flex: 1;">
+          <h2>Skill Builder Architecture, Framework Guardrails, 100-Skill Router &amp; Starter Kit</h2>
+          <p class="text-muted">Reference handbook and interactive sandboxes for <code>CLAUDE.md</code> / <code>AGENTS.md</code> memory, deterministic <code>PreToolUse</code> runtime hooks, 100-skill BM25 progressive disclosure routing, and a downloadable 14-file starter repository.</p>
+        </div>
+      </div>
+
+      <div class="kit-tabs" role="tablist">
+        <button type="button" class="kit-tab-btn active" data-kit-tab="handbook">📘 1. Architecture &amp; Deep-Dive Guide</button>
+        <button type="button" class="kit-tab-btn" data-kit-tab="guardrails">🛡️ 2. Runtime Framework Guardrails Lab</button>
+        <button type="button" class="kit-tab-btn" data-kit-tab="router">🧭 3. 100-Skill Context Router</button>
+        <button type="button" class="kit-tab-btn" data-kit-tab="evals">🧪 4. Baseline vs. Skill Benchmark Simulator</button>
+        <button type="button" class="kit-tab-btn" data-kit-tab="starter">📦 5. Build-Your-Own Starter Kit (14 Files + .zip)</button>
+      </div>
+
+      <!-- PANE 1: ARCHITECTURE & DEEP-DIVE GUIDE -->
+      <div id="kit-pane-handbook" class="kit-pane active">
+        <div id="kit-topics-container" class="topic-grid"></div>
+      </div>
+
+      <!-- PANE 2: RUNTIME FRAMEWORK GUARDRAILS LAB -->
+      <div id="kit-pane-guardrails" class="kit-pane">
+        <p class="text-muted small-text" style="margin-bottom: 10px;">
+          Upstream markdown files (<code>CLAUDE.md</code> / <code>AGENTS.md</code>) are advisory UX—an LLM can drift or be prompt-injected past them. Real guardrails execute deterministically <strong>in the agent framework runtime</strong> via <code>PreToolUse</code> hooks (exit code <code>2</code> = hard block), read-only DB roles, and Human-in-the-Loop (HITL) approval gates.
+        </p>
+
+        <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;">
+          <button type="button" class="btn btn-secondary btn-sm guard-preset-btn" data-tool="OracleSQL" data-val="SELECT sid, serial#, blocking_session, event FROM v$session WHERE blocking_session IS NOT NULL" data-hitl="0">
+            ✓ Safe Oracle V$SESSION Lock Query
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm guard-preset-btn" data-tool="OracleSQL" data-val="DELETE FROM invoice_ledger WHERE status = 'STUCK'" data-hitl="0">
+            ✕ Blocked Oracle DELETE Mutation
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm guard-preset-btn" data-tool="Bash" data-val="rm -rf /var/log/billing" data-hitl="0">
+            ✕ Blocked Linux rm -rf
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm guard-preset-btn" data-tool="Bash" data-val="systemctl restart billing-invoice-worker" data-hitl="0">
+            ⚠ Gated systemctl restart (Needs HITL)
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm guard-preset-btn" data-tool="Read" data-val=".env" data-hitl="0">
+            ✕ Blocked .env Secret Read
+          </button>
+        </div>
+
+        <div class="llm-row">
+          <div style="min-width: 170px;">
+            <label for="guard-tool-select">Tool Intercepted</label>
+            <select id="guard-tool-select" class="input-control">
+              <option value="OracleSQL">OracleSQL (DB Tool)</option>
+              <option value="Bash">Bash (Linux CLI)</option>
+              <option value="Read">Read (Filesystem)</option>
+            </select>
+          </div>
+          <div style="flex: 1; min-width: 260px;">
+            <label for="guard-input-value">Command / SQL Statement / File Path</label>
+            <input id="guard-input-value" type="text" class="input-control" value="SELECT sid, serial#, blocking_session, event FROM v$session WHERE blocking_session IS NOT NULL" />
+          </div>
+          <div style="display: flex; align-items: flex-end; gap: 10px;">
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.82rem; cursor: pointer; padding-bottom: 9px;">
+              <input id="guard-hitl-checkbox" type="checkbox" /> Operator HITL Sign-Off
+            </label>
+            <button id="btn-run-guardrail" type="button" class="btn btn-primary">▶ Test PreToolUse Hook</button>
+          </div>
+        </div>
+
+        <div id="guard-verdict-box" class="kpi-box verdict-allow" style="margin-top: 12px;"></div>
+
+        <div style="margin-top: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <strong style="font-size: 0.9rem;">Production Framework Guardrail Code:</strong>
+              <select id="guard-code-select" class="input-control" style="width: auto;">
+                <option value=".claude/hooks/pre_tool_use_guard.py">.claude/hooks/pre_tool_use_guard.py</option>
+                <option value=".claude/hooks/post_tool_use_audit.py">.claude/hooks/post_tool_use_audit.py</option>
+                <option value=".claude/settings.json">.claude/settings.json</option>
+              </select>
+            </div>
+            <button id="btn-copy-guard-code" type="button" class="btn btn-secondary btn-sm">📋 Copy Guardrail File</button>
+          </div>
+          <pre id="guard-code-viewer" class="code-viewer" style="max-height: 300px;"></pre>
+        </div>
+      </div>
+
+      <!-- PANE 3: 100-SKILL PROGRESSIVE DISCLOSURE ROUTER -->
+      <div id="kit-pane-router" class="kit-pane">
+        <p class="text-muted small-text" style="margin-bottom: 10px;">
+          Simulate routing across <strong>100 enterprise skills (10 domains)</strong>. Compare dumping all 100 full skills inline vs. <strong>3-Tier Progressive Disclosure + Dynamic Top-K BM25 Routing + Negative Triggers + Subagent Isolation</strong>.
+        </p>
+
+        <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;">
+          <button type="button" class="btn btn-secondary btn-sm router-preset-btn" data-q="Nightly billing invoice batch stalled with ORA-00060 row lock and 504 correlation timeout; check logs and draft Jira RCA">
+            🔎 ORA-00060 Lock + 504 Trace + Jira RCA
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm router-preset-btn" data-q="Kafka billing-events-dlq consumer lag hit 1,900 messages with schema deserialization failures; find Confluence runbook">
+            📨 Kafka DLQ Lag + Confluence Runbook
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm router-preset-btn" data-q="Build an Angular standalone dashboard with RxJS SSE streaming and operator HITL approval modal">
+            🖥️ Angular RxJS SSE + HITL Console
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm router-preset-btn" data-q="Linux billing host reporting No space left on device and systemd unit restart loop">
+            🐧 Linux Disk/Inode + systemd CrashLoop
+          </button>
+        </div>
+
+        <div class="llm-row">
+          <div style="flex: 1; min-width: 260px;">
+            <label for="router-query-input">Operator / User Request</label>
+            <input id="router-query-input" type="text" class="input-control" value="Nightly billing invoice batch stalled with ORA-00060 row lock and 504 correlation timeout; check logs and draft Jira RCA" />
+          </div>
+          <div style="min-width: 120px;">
+            <label for="router-topk-select">Top-K Skills</label>
+            <select id="router-topk-select" class="input-control">
+              <option value="2">Top 2</option>
+              <option value="3" selected>Top 3</option>
+              <option value="5">Top 5</option>
+            </select>
+          </div>
+          <div style="display: flex; align-items: flex-end; gap: 10px;">
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.82rem; cursor: pointer; padding-bottom: 9px;">
+              <input id="router-subagent-checkbox" type="checkbox" checked /> Subagent + Script Digest
+            </label>
+            <button id="btn-run-router" type="button" class="btn btn-primary">🧭 Route Across 100 Skills</button>
+          </div>
+        </div>
+
+        <div id="router-kpis" class="kpi-grid-4"></div>
+        <div id="router-results-box"></div>
+      </div>
+
+      <!-- PANE 4: SKILL-CREATOR EVALS & TRIGGER DESCRIPTION OPTIMIZER -->
+      <div id="kit-pane-evals" class="kit-pane">
+        <p class="text-muted small-text" style="margin-bottom: 10px;">
+          Execute the <code>skill-creator</code> scientific loop: paired <code>with_skill</code> vs. <code>without_skill</code> baseline runs inside <code>&lt;skill-name&gt;-workspace/iteration-1/</code>, deterministic assertion grading, and <strong>60% Train / 40% Held-Out Test YAML Trigger Description Optimization</strong>.
+        </p>
+
+        <div class="llm-row">
+          <div style="min-width: 220px;">
+            <label for="eval-skill-name">Target Skill Under Evaluation</label>
+            <input id="eval-skill-name" type="text" class="input-control" value="billing-ops-diagnostics" />
+          </div>
+          <div style="flex: 1; min-width: 260px;">
+            <label for="eval-init-desc">Iteration 0 Baseline YAML Description (Before Optimization)</label>
+            <input id="eval-init-desc" type="text" class="input-control" value="Helps debug billing issues and database problems." />
+          </div>
+          <div style="display: flex; align-items: flex-end;">
+            <button id="btn-run-evals" type="button" class="btn btn-primary">🧪 Run A/B Benchmark &amp; Trigger Optimizer</button>
+          </div>
+        </div>
+
+        <div id="eval-kpis" class="kpi-grid-4"></div>
+        <div id="eval-results-box"></div>
+        <div id="trigger-opt-box" style="margin-top: 16px;"></div>
+      </div>
+
+      <!-- PANE 5: FULL STARTER KIT SCAFFOLDER & .ZIP DOWNLOAD -->
+      <div id="kit-pane-starter" class="kit-pane">
+        <p class="text-muted small-text" style="margin-bottom: 10px;">
+          Generate and download a complete, runnable <strong>14-file Agent Engineering Starter Kit</strong> (<code>CLAUDE.md</code>, <code>AGENTS.md</code>, <code>.claude/settings.json</code>, <code>PreToolUse</code> &amp; <code>PostToolUse</code> hooks, progressive-disclosure skill + Linux/Oracle scripts, 100-skill router, eval harness, full architecture handbook, and unit test suite).
+        </p>
+
+        <div class="llm-row">
+          <div style="min-width: 220px;">
+            <label for="kit-project-name">Project / Repo Slug</label>
+            <input id="kit-project-name" type="text" class="input-control" value="billing-ops-platform" />
+          </div>
+          <div style="flex: 1; min-width: 260px;">
+            <label for="kit-stack-input">Target Infrastructure &amp; Stack</label>
+            <input id="kit-stack-input" type="text" class="input-control" value="Linux Billing Servers, Oracle Database (Read-Only Diagnostics), Microservices, Jira & Confluence MCP, Angular 19 Ops Console" />
+          </div>
+          <div style="display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap;">
+            <button id="btn-refresh-kit" type="button" class="btn btn-secondary">↻ Regenerate Files</button>
+            <button id="btn-download-kit-zip" type="button" class="btn btn-primary">⬇ Download 14-File Starter Kit (.zip)</button>
+          </div>
+        </div>
+
+        <div class="kit-split-explorer">
+          <div id="kit-file-list" class="kit-file-list"></div>
+          <div style="display: flex; flex-direction: column; min-width: 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 8px;">
+              <strong id="kit-active-filename" style="font-family: var(--font-mono); font-size: 0.85rem; color: #93c5fd;">CLAUDE.md</strong>
+              <button id="btn-copy-kit-file" type="button" class="btn btn-secondary btn-sm">📋 Copy Current File</button>
+            </div>
+            <pre id="kit-file-viewer" class="code-viewer" style="max-height: 440px;"></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+    </details>
   </main>
 
   <!-- Simple Modal to Preview SKILL.md if clicked -->

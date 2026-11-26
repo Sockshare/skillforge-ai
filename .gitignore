@@ -9,3 +9,6 @@ build/
 .env
 server.log
 skills_workspace/
+eval_workspaces/
+pipeline_runs/
+

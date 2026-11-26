@@ -25,12 +25,31 @@ from skillforge.compiler import (
     evaluate_skill_deterministically,
     parse_blueprint_or_preset,
 )
-from skillforge.llm_bridge import list_llm_profiles
+from skillforge.enterprise_kit import (
+    evaluate_pre_tool_use_hook,
+    generate_starter_kit_artifacts,
+    optimize_trigger_description,
+    run_skill_creator_eval_suite,
+    simulate_progressive_skill_router,
+)
+from skillforge.llm_bridge import get_ollama_status, list_llm_profiles
+from skillforge.orchestrator_builder import (
+    compile_custom_orchestrator,
+    execute_orchestrator_pipeline,
+    list_orchestrator_pipelines,
+    provision_compliance_reference_suite,
+)
 from skillforge.presets import PRESETS, list_presets
+from skillforge.skill_creator_studio import (
+    build_standalone_headless_skill,
+    interview_skill_intent,
+    run_real_skill_creator_evals,
+    submit_human_feedback_and_iterate,
+)
 from skillforge.workspace import (
     SKILLS_WORKSPACE_DIR,
     list_workspace_skills,
-     save_skill_to_workspace,
+    save_skill_to_workspace,
     scan_pc_application_folder,
 )
 
@@ -65,6 +84,63 @@ def get_mcp_tools_catalog(skill_context: Dict[str, Any] | None = None) -> List[D
             },
         },
         {
+            "name": "build_standalone_headless_skill",
+            "description": "Decouple Python domain logic from a web application (or build from intent) into a 100% standalone headless CLI skill (`scripts/<slug>_cli.py`, `resources/reporting_engine.py`, `BUILD.bazel`, `INSTALL.md`, `SKILL.md`, `evals/evals.json`) requiring zero web server.",
+            "inputSchema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Skill slug (kebab-case)."},
+                    "title": {"type": "string"},
+                    "description": {"type": "string"},
+                    "webapp_source": {"type": "string", "description": "Optional web app source code to decouple via AST."},
+                    "stage_role": {"type": "string", "default": "audit"},
+                },
+            },
+        },
+        {
+            "name": "run_real_skill_creator_evals",
+            "description": "Execute real subprocess with_skill vs. without_skill/old_skill baseline evaluations on disk (`timing.json`, `grading.json`, `benchmark.json`, blind comparator, and `eval_viewer.html`).",
+            "inputSchema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "required": ["skill_slug"],
+                "properties": {
+                    "skill_slug": {"type": "string"},
+                    "ollama_model": {"type": "string", "description": "Optional installed Ollama model tag."},
+                },
+            },
+        },
+        {
+            "name": "compile_skill_orchestrator",
+            "description": "Compile an ordered list of standalone skills into a sequential Multi-Skill Orchestrator + Master Executive Reporter + Two-Run SHA-256 Determinism Verifier + Unified 1-Command CLI Launcher.",
+            "inputSchema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "required": ["pipeline_name", "stage_skill_slugs"],
+                "properties": {
+                    "pipeline_name": {"type": "string"},
+                    "stage_skill_slugs": {"type": "array", "items": {"type": "string"}},
+                    "description": {"type": "string"},
+                },
+            },
+        },
+        {
+            "name": "run_orchestrated_pipeline",
+            "description": "Execute a multi-skill sequential orchestrator (`single_stage`, `full_workflow`, or `two_run_determinism` proving Run A SHA-256 == Run B SHA-256).",
+            "inputSchema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                    "pipeline_slug": {"type": "string", "default": "compliance-master-orchestrator"},
+                    "target_app": {"type": "string", "default": "PaymentsCore"},
+                    "component_ids": {"type": "string", "default": "10401,10402"},
+                    "run_mode": {"type": "string", "enum": ["single_stage", "full_workflow", "two_run_determinism"], "default": "full_workflow"},
+                    "stage_selector": {"type": "string", "default": ""},
+                },
+            },
+        },
+        {
             "name": "list_installed_skills",
             "description": "List all user-compiled skills and their multi-tool inventories currently active in the SkillForge MCP Hub.",
             "inputSchema": {
@@ -75,7 +151,7 @@ def get_mcp_tools_catalog(skill_context: Dict[str, Any] | None = None) -> List[D
         },
         {
             "name": "list_llm_profiles",
-            "description": "List all configured local (Ollama, LM Studio, vLLM) and cloud LLM connections available for skill translation.",
+            "description": "List all configured local (Ollama, LM Studio, vLLM) and cloud LLM connections plus live installed Ollama models.",
             "inputSchema": {
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "type": "object",
@@ -101,6 +177,58 @@ def get_mcp_tools_catalog(skill_context: Dict[str, Any] | None = None) -> List[D
                 "properties": {
                     "preset_id": {"type": "string", "default": "aws-iam-least-privilege-auditor"},
                     "payload": {"type": "object", "description": "Optional custom workload payload."},
+                },
+            },
+        },
+        {
+            "name": "route_hundred_skills_progressive",
+            "description": "Route a prompt across 100 enterprise skills using 3-tier progressive disclosure, BM25 weighting, and negative triggers to prevent context-window overflow.",
+            "inputSchema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "required": ["query"],
+                "properties": {
+                    "query": {"type": "string"},
+                    "top_k": {"type": "integer", "default": 3},
+                    "use_subagent_isolation": {"type": "boolean", "default": True},
+                },
+            },
+        },
+        {
+            "name": "evaluate_pretooluse_guardrail",
+            "description": "Test a Bash, SQL/Oracle, or File tool call against the deterministic PreToolUse runtime guardrail hook.",
+            "inputSchema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "required": ["tool_name", "tool_input"],
+                "properties": {
+                    "tool_name": {"type": "string"},
+                    "tool_input": {"type": "object"},
+                    "hitl_approved": {"type": "boolean", "default": False},
+                },
+            },
+        },
+        {
+            "name": "run_skill_creator_benchmark",
+            "description": "Execute the skill-creator parallel with_skill vs. without_skill baseline benchmark and 60/40 train/test trigger description optimizer.",
+            "inputSchema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                    "skill_name": {"type": "string", "default": "billing-ops-diagnostics"},
+                    "initial_description": {"type": "string", "default": ""},
+                },
+            },
+        },
+        {
+            "name": "generate_agent_engineering_kit",
+            "description": "Generate CLAUDE.md, AGENTS.md, .claude/settings.json, PreToolUse/PostToolUse hooks, progressive-disclosure skill, router, and eval harness.",
+            "inputSchema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                    "project_name": {"type": "string", "default": "billing-ops-platform"},
+                    "stack_summary": {"type": "string", "default": ""},
                 },
             },
         },
@@ -281,18 +409,75 @@ def process_mcp_jsonrpc(request: Dict[str, Any], skill_context: Dict[str, Any] |
                 "jsonrpc": "2.0",
                 "id": req_id,
                 "result": {
-                    "content": [{"type": "text", "text": canonical_json({"installed_skills": ws_skills, "count": len(ws_skills)})}],
+                    "content": [{"type": "text", "text": canonical_json({"installed_skills": ws_skills, "orchestrators": list_orchestrator_pipelines(), "count": len(ws_skills)})}],
                     "isError": False,
                 },
             }
 
         if tool_name == "list_llm_profiles":
             profiles = list_llm_profiles()
+            ollama = get_ollama_status()
             return {
                 "jsonrpc": "2.0",
                 "id": req_id,
                 "result": {
-                    "content": [{"type": "text", "text": canonical_json({"llm_profiles": profiles, "count": len(profiles)})}],
+                    "content": [{"type": "text", "text": canonical_json({"ollama": ollama, "llm_profiles": profiles, "count": len(profiles)})}],
+                    "isError": False,
+                },
+            }
+
+        if tool_name == "build_standalone_headless_skill":
+            built = build_standalone_headless_skill(arguments)
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "content": [{"type": "text", "text": canonical_json(built["manifest"])}],
+                    "isError": False,
+                    "meta": {"determinism_sha256": built["manifest"]["determinism"]["run_1_sha256"]},
+                },
+            }
+
+        if tool_name == "run_real_skill_creator_evals":
+            llm_cfg = {"provider": "ollama", "model": arguments["ollama_model"]} if arguments.get("ollama_model") else None
+            ev_res = run_real_skill_creator_evals(arguments.get("skill_slug") or "standalone-ops-auditor", llm_config=llm_cfg)
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "content": [{"type": "text", "text": canonical_json(ev_res)}],
+                    "isError": False,
+                },
+            }
+
+        if tool_name == "compile_skill_orchestrator":
+            orch = compile_custom_orchestrator(
+                pipeline_name=arguments.get("pipeline_name") or "custom-orchestrator",
+                stage_skill_slugs=arguments.get("stage_skill_slugs") or [],
+                description=arguments.get("description") or "",
+            )
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "content": [{"type": "text", "text": canonical_json(orch["manifest"])}],
+                    "isError": False,
+                },
+            }
+
+        if tool_name == "run_orchestrated_pipeline":
+            run_res = execute_orchestrator_pipeline(
+                pipeline_slug=arguments.get("pipeline_slug") or "compliance-master-orchestrator",
+                target_app=arguments.get("target_app") or "PaymentsCore",
+                component_ids=arguments.get("component_ids") or "10401,10402",
+                run_mode=arguments.get("run_mode") or "full_workflow",
+                stage_selector=arguments.get("stage_selector") or "",
+            )
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "content": [{"type": "text", "text": canonical_json(run_res)}],
                     "isError": False,
                 },
             }
@@ -366,6 +551,57 @@ def process_mcp_jsonrpc(request: Dict[str, Any], skill_context: Dict[str, Any] |
                 },
             }
 
+        if tool_name == "route_hundred_skills_progressive":
+            res = simulate_progressive_skill_router(
+                user_query=arguments.get("query") or "",
+                top_k=int(arguments.get("top_k", 3)),
+                use_subagent_isolation=bool(arguments.get("use_subagent_isolation", True)),
+            )
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {"content": [{"type": "text", "text": canonical_json(res)}], "isError": False},
+            }
+
+        if tool_name == "evaluate_pretooluse_guardrail":
+            res = evaluate_pre_tool_use_hook(
+                tool_name=arguments.get("tool_name") or "Bash",
+                tool_input=arguments.get("tool_input") or {},
+                hitl_approved=bool(arguments.get("hitl_approved", False)),
+            )
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {"content": [{"type": "text", "text": canonical_json(res)}], "isError": False},
+            }
+
+        if tool_name == "run_skill_creator_benchmark":
+            bench = run_skill_creator_eval_suite(arguments.get("skill_name") or "billing-ops-diagnostics")
+            opt = optimize_trigger_description(arguments.get("initial_description") or "")
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "content": [{"type": "text", "text": canonical_json({"benchmark": bench, "trigger_optimization": opt})}],
+                    "isError": False,
+                    "meta": {"determinism_sha256": bench["benchmark_sha256"]},
+                },
+            }
+
+        if tool_name == "generate_agent_engineering_kit":
+            files = generate_starter_kit_artifacts(
+                project_name=arguments.get("project_name") or "billing-ops-platform",
+                stack_summary=arguments.get("stack_summary") or "",
+            )
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "content": [{"type": "text", "text": canonical_json({"files_count": len(files), "files": files})}],
+                    "isError": False,
+                },
+            }
+
         # Check if tool_name belongs to an installed workspace skill (`<skill_slug>__<tool>`)
         matched_spec = None
         if "__" in tool_name:
@@ -374,6 +610,36 @@ def process_mcp_jsonrpc(request: Dict[str, Any], skill_context: Dict[str, Any] |
                 if ws["name"] == prefix_slug or ws["id"] == prefix_slug:
                     matched_spec = ws
                     break
+
+        if matched_spec and matched_spec.get("mode") == "standalone_headless_cli":
+            import subprocess as _sp
+            skill_dir = SKILLS_WORKSPACE_DIR / matched_spec["name"]
+            cli_p = skill_dir / matched_spec.get("cli_script", f"scripts/{matched_spec['name'].replace('-', '_')}_cli.py")
+            app_arg = str((arguments.get("payload") or arguments).get("app") or "PaymentsCore")
+            out = _sp.check_output([sys.executable, str(cli_p), "--app", app_arg], cwd=str(skill_dir), text=True)
+            parsed = json.loads(out)
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "content": [{"type": "text", "text": canonical_json(parsed)}],
+                    "isError": False,
+                    "meta": {"skill_id": matched_spec["id"], "determinism_sha256": parsed.get("dataset_sha256", "")},
+                },
+            }
+
+        if matched_spec and matched_spec.get("mode") == "multi_skill_orchestrator":
+            mode_run = "two_run_determinism" if "verify" in tool_name else "full_workflow"
+            app_arg = str((arguments.get("payload") or arguments).get("app") or "PaymentsCore")
+            orch_out = execute_orchestrator_pipeline(matched_spec["name"], target_app=app_arg, run_mode=mode_run)
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "content": [{"type": "text", "text": canonical_json(orch_out)}],
+                    "isError": False,
+                },
+            }
 
         normalized_id = tool_name.replace("_", "-")
         if matched_spec:
@@ -387,7 +653,7 @@ def process_mcp_jsonrpc(request: Dict[str, Any], skill_context: Dict[str, Any] |
 
         workload_payload = arguments.get("payload") if isinstance(arguments.get("payload"), dict) else arguments
         if not workload_payload:
-            workload_payload = spec["sample_input"]
+            workload_payload = spec.get("sample_input", {})
 
         evaluation = evaluate_skill_deterministically(spec, workload_payload)
         evaluation["invoked_tool"] = tool_name

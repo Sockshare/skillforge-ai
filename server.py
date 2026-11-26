@@ -18,6 +18,15 @@ from skillforge.compiler import (
     evaluate_skill_deterministically,
     parse_blueprint_or_preset,
 )
+from skillforge.enterprise_kit import (
+    build_starter_kit_zip,
+    evaluate_pre_tool_use_hook,
+    generate_starter_kit_artifacts,
+    get_enterprise_kit_overview,
+    optimize_trigger_description,
+    run_skill_creator_eval_suite,
+    simulate_progressive_skill_router,
+)
 from skillforge.llm_bridge import (
     DEFAULT_TRANSFORMATION_DOC,
     delete_llm_profile,
@@ -27,7 +36,22 @@ from skillforge.llm_bridge import (
     translate_webapp_with_llm,
     upsert_llm_profile,
 )
+from skillforge.orchestrator_builder import (
+    build_orchestrator_suite_zip,
+    compile_custom_orchestrator,
+    execute_orchestrator_pipeline,
+    list_orchestrator_pipelines,
+    provision_compliance_reference_suite,
+)
 from skillforge.presets import list_presets
+from skillforge.skill_creator_studio import (
+    build_standalone_headless_skill,
+    interview_skill_intent,
+    package_standalone_skill_archive,
+    run_real_skill_creator_evals,
+    submit_human_feedback_and_iterate,
+    update_skill_frontmatter_description,
+)
 from skillforge.workspace import (
     browse_pc_directory,
     delete_workspace_skill,
@@ -88,9 +112,25 @@ class SkillForgeRequestHandler(BaseHTTPRequestHandler):
                     "version": __version__,
                     "presets_available": len(list_presets()),
                     "installed_workspace_skills": len(ws_skills),
+                    "installed_orchestrators": len(list_orchestrator_pipelines()),
                     "mcp_protocol_version": "2024-11-05",
                     "ollama_connected": ollama["connected"],
                     "ollama_models": ollama["models"],
+                    "ollama_recommended_model": ollama.get("recommended_default", ""),
+                }
+            )
+            return
+
+        if route == "/api/ollama/models":
+            custom_url = qs.get("url", [None])[0]
+            self._send_json(get_ollama_status(custom_url))
+            return
+
+        if route == "/api/orchestrator/pipelines":
+            self._send_json(
+                {
+                    "pipelines": list_orchestrator_pipelines(),
+                    "workspace_skills": list_workspace_skills(),
                 }
             )
             return
@@ -101,7 +141,8 @@ class SkillForgeRequestHandler(BaseHTTPRequestHandler):
             return
 
         if route == "/api/llm/status":
-            ollama = get_ollama_status()
+            custom_url = qs.get("ollama_url", [None])[0]
+            ollama = get_ollama_status(custom_url)
             self._send_json(
                 {
                     "ollama": ollama,
@@ -123,6 +164,7 @@ class SkillForgeRequestHandler(BaseHTTPRequestHandler):
                     "skills": skills,
                     "skills_count": len(skills),
                     "total_tools_count": total_tools,
+                    "orchestrators": list_orchestrator_pipelines(),
                 }
             )
             return
@@ -134,6 +176,10 @@ class SkillForgeRequestHandler(BaseHTTPRequestHandler):
 
         if route == "/api/presets":
             self._send_json({"presets": list_presets()})
+            return
+
+        if route == "/api/kit/overview":
+            self._send_json(get_enterprise_kit_overview())
             return
 
         if route in ("/", "/index.html"):
@@ -181,6 +227,18 @@ class SkillForgeRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(scan_result)
             except Exception as exc:  # noqa: BLE001
                 self._send_json({"error": f"Failed to load sample application: {exc}"}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        if route == "/api/fs/load-billing-ops-app":
+            try:
+                ops_dir = ROOT_DIR / "examples" / "billing-ops-webapp"
+                scan_result = scan_pc_application_folder(str(ops_dir))
+                scan_result["app_name"] = "BillingOps Diagnostics"
+                scan_result["skill_slug"] = "billing-ops-webapp-skill"
+                scan_result["default_target_url"] = "http://127.0.0.1:8115"
+                self._send_json(scan_result)
+            except Exception as exc:  # noqa: BLE001
+                self._send_json({"error": f"Failed to load BillingOps application: {exc}"}, status=HTTPStatus.BAD_REQUEST)
             return
 
         if route == "/api/fs/scan-app":
@@ -231,6 +289,135 @@ class SkillForgeRequestHandler(BaseHTTPRequestHandler):
             self._send_json(compiled)
             return
 
+        # --- 1:1 SKILL-CREATOR STUDIO & HEADLESS DECOUPLER ENDPOINTS ---
+        if route == "/api/skill-creator/interview":
+            res = interview_skill_intent(
+                goal=body.get("goal") or "",
+                app_source=body.get("app_source") or "",
+                trigger_hints=body.get("trigger_hints") or "",
+                output_format=body.get("output_format") or "Executive HTML, Markdown, CSV, Canonical JSON & SHA-256 Manifest",
+                llm_config=body.get("llm_config"),
+            )
+            self._send_json(res)
+            return
+
+        if route == "/api/skill-creator/build-standalone":
+            try:
+                built = build_standalone_headless_skill(body)
+                self._send_json(
+                    {
+                        "manifest": built["manifest"],
+                        "artifacts": built["artifacts"],
+                        "workspace_skills": list_workspace_skills(),
+                    }
+                )
+            except Exception as exc:  # noqa: BLE001
+                self._send_json({"error": f"Standalone skill build failed: {exc}"}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        if route == "/api/skill-creator/run-evals":
+            try:
+                ev = run_real_skill_creator_evals(
+                    skill_slug=body.get("skill_slug") or "standalone-ops-auditor",
+                    llm_config=body.get("llm_config"),
+                )
+                self._send_json(ev)
+            except Exception as exc:  # noqa: BLE001
+                self._send_json({"error": f"Skill-Creator eval failed: {exc}"}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        if route == "/api/skill-creator/submit-feedback":
+            try:
+                res = submit_human_feedback_and_iterate(
+                    skill_slug=body.get("skill_slug") or "standalone-ops-auditor",
+                    iteration=int(body.get("iteration", 1)),
+                    reviews=body.get("reviews") or [],
+                    llm_config=body.get("llm_config"),
+                )
+                self._send_json(res)
+            except Exception as exc:  # noqa: BLE001
+                self._send_json({"error": f"Feedback iteration failed: {exc}"}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        if route == "/api/skill-creator/optimize-description":
+            opt = optimize_trigger_description(
+                body.get("initial_description") or "",
+                llm_config=body.get("llm_config"),
+            )
+            if body.get("apply_to_skill_md") and body.get("skill_slug"):
+                try:
+                    applied = update_skill_frontmatter_description(body["skill_slug"], opt["best_description"])
+                    opt["applied_to_skill_md"] = applied
+                except Exception as exc:  # noqa: BLE001
+                    opt["apply_warning"] = str(exc)
+            self._send_json(opt)
+            return
+
+        if route == "/api/skill-creator/package.skill":
+            slug = body.get("skill_slug") or "standalone-ops-auditor"
+            zbytes = package_standalone_skill_archive(slug)
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", f'attachment; filename="{slug}.skill.zip"')
+            self.send_header("Content-Length", str(len(zbytes)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(zbytes)
+            return
+
+        # --- MULTI-SKILL SEQUENTIAL ORCHESTRATOR & DETERMINISM ENDPOINTS ---
+        if route == "/api/orchestrator/provision-reference-suite":
+            res = provision_compliance_reference_suite(llm_config=body.get("llm_config"))
+            res["pipelines"] = list_orchestrator_pipelines()
+            res["workspace_skills"] = list_workspace_skills()
+            self._send_json(res)
+            return
+
+        if route == "/api/orchestrator/compile":
+            try:
+                orch = compile_custom_orchestrator(
+                    pipeline_name=body.get("pipeline_name") or "custom-master-orchestrator",
+                    stage_skill_slugs=body.get("stage_skill_slugs") or [],
+                    description=body.get("description") or "",
+                    llm_config=body.get("llm_config"),
+                )
+                self._send_json(
+                    {
+                        "orchestrator": orch["manifest"],
+                        "artifacts": orch["artifacts"],
+                        "pipelines": list_orchestrator_pipelines(),
+                    }
+                )
+            except Exception as exc:  # noqa: BLE001
+                self._send_json({"error": f"Orchestrator compile failed: {exc}"}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        if route == "/api/orchestrator/run":
+            try:
+                run_res = execute_orchestrator_pipeline(
+                    pipeline_slug=body.get("pipeline_slug") or "compliance-master-orchestrator",
+                    target_app=body.get("target_app") or "PaymentsCore",
+                    component_ids=body.get("component_ids") or "10401,10402",
+                    run_mode=body.get("run_mode") or "full_workflow",
+                    stage_selector=body.get("stage_selector") or "",
+                )
+                self._send_json(run_res)
+            except Exception as exc:  # noqa: BLE001
+                self._send_json({"error": f"Orchestrator run failed: {exc}"}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        if route == "/api/orchestrator/bundle.zip":
+            slug = body.get("pipeline_slug") or "compliance-master-orchestrator"
+            zbytes = build_orchestrator_suite_zip(slug)
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", f'attachment; filename="{slug}-full-suite.zip"')
+            self.send_header("Content-Length", str(len(zbytes)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(zbytes)
+            return
+
         if route == "/api/workspace/skills":
             compiled = compile_skill(body)
             manifest = save_skill_to_workspace(compiled)
@@ -239,7 +426,7 @@ class SkillForgeRequestHandler(BaseHTTPRequestHandler):
 
         if route == "/api/workspace/delete":
             removed = delete_workspace_skill(body.get("id") or body.get("name") or "")
-            self._send_json({"deleted": removed, "skills": list_workspace_skills()})
+            self._send_json({"deleted": removed, "skills": list_workspace_skills(), "orchestrators": list_orchestrator_pipelines()})
             return
 
         if route == "/api/mcp/rpc":
@@ -294,6 +481,52 @@ class SkillForgeRequestHandler(BaseHTTPRequestHandler):
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "application/zip")
             self.send_header("Content-Disposition", f'attachment; filename="{slug}-skill-bundle.zip"')
+            self.send_header("Content-Length", str(len(zip_bytes)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(zip_bytes)
+            return
+
+        if route == "/api/kit/router":
+            res = simulate_progressive_skill_router(
+                user_query=body.get("query") or "",
+                top_k=int(body.get("top_k", 3)),
+                context_window_limit=int(body.get("context_window_limit", 200000)),
+                use_subagent_isolation=bool(body.get("use_subagent_isolation", True)),
+            )
+            self._send_json(res)
+            return
+
+        if route == "/api/kit/guardrails/test":
+            res = evaluate_pre_tool_use_hook(
+                tool_name=body.get("tool_name") or "Bash",
+                tool_input=body.get("tool_input") or {},
+                hitl_approved=bool(body.get("hitl_approved", False)),
+            )
+            self._send_json(res)
+            return
+
+        if route == "/api/kit/evals/run":
+            bench = run_skill_creator_eval_suite(body.get("skill_name") or "billing-ops-diagnostics")
+            opt = optimize_trigger_description(body.get("initial_description") or "")
+            self._send_json({"benchmark_suite": bench, "trigger_optimization": opt})
+            return
+
+        if route == "/api/kit/generate":
+            files = generate_starter_kit_artifacts(
+                project_name=body.get("project_name") or "billing-ops-platform",
+                stack_summary=body.get("stack_summary") or "",
+            )
+            self._send_json({"files": files, "files_count": len(files)})
+            return
+
+        if route == "/api/kit/starter-bundle.zip":
+            proj = body.get("project_name") or "billing-ops-platform"
+            stack = body.get("stack_summary") or ""
+            zip_bytes = build_starter_kit_zip(proj, stack)
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", 'attachment; filename="skillforge-agent-engineering-kit.zip"')
             self.send_header("Content-Length", str(len(zip_bytes)))
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()

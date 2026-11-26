@@ -517,3 +517,195 @@ body {
   white-space: pre-wrap;
   flex: 1;
 }
+
+/* Step 3: Enterprise Skill Builder, Guardrails, 100-Skill Router & Eval Lab */
+.lab-full-card {
+  margin-top: 26px;
+}
+
+.kit-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.kit-tab-btn {
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  padding: 9px 14px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.kit-tab-btn:hover {
+  border-color: var(--accent-indigo);
+  color: #fff;
+}
+
+.kit-tab-btn.active {
+  background: linear-gradient(135deg, var(--accent-indigo), #0ea5e9);
+  border-color: transparent;
+  color: #fff;
+}
+
+.kit-pane {
+  display: none;
+}
+
+.kit-pane.active {
+  display: block;
+}
+
+.topic-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: 16px;
+}
+
+.topic-card {
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.topic-card h3 {
+  font-size: 1rem;
+  color: #f8fafc;
+}
+
+.topic-list {
+  padding-left: 18px;
+  font-size: 0.84rem;
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kpi-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin: 14px 0;
+}
+
+.kpi-box {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 13px 15px;
+}
+
+.kpi-box .kpi-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.kpi-box .kpi-val {
+  font-size: 1.3rem;
+  font-weight: 800;
+  margin-top: 4px;
+}
+
+.verdict-allow {
+  background: rgba(16, 185, 129, 0.14);
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  color: #6ee7b7;
+}
+
+.verdict-block {
+  background: rgba(239, 68, 68, 0.14);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  color: #fca5a5;
+}
+
+.verdict-hitl {
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  color: #fcd34d;
+}
+
+.kit-split-explorer {
+  display: grid;
+  grid-template-columns: 310px 1fr;
+  gap: 16px;
+  margin-top: 14px;
+}
+
+@media (max-width: 900px) {
+  .kit-split-explorer,
+  .topic-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.kit-file-list {
+  background: var(--bg-code);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 8px;
+  max-height: 480px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kit-file-btn {
+  text-align: left;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 7px 10px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  cursor: pointer;
+  word-break: break-all;
+}
+
+.kit-file-btn:hover {
+  background: rgba(99, 102, 241, 0.12);
+  color: #fff;
+}
+
+.kit-file-btn.active {
+  background: rgba(99, 102, 241, 0.24);
+  border-color: rgba(99, 102, 241, 0.55);
+  color: #fff;
+}
+
+.kit-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  margin-top: 10px;
+}
+
+.kit-table th,
+.kit-table td {
+  border: 1px solid var(--border-strong);
+  padding: 9px 11px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.kit-table th {
+  background: rgba(30, 41, 59, 0.9);
+  color: #93c5fd;
+  font-weight: 600;
+}
+
