@@ -643,7 +643,7 @@ filegroup(
 ```bash
 cp -r {slug} ~/.claude/skills/{slug}
 # or
-cp -r {slug} ~/.gemini/config/skills/{slug}
+cp -r {slug} ~/.ailabs/config/skills/{slug}
 ```
 
 ## Option B: Run Headless CLI Directly (Zero Web Server Needed)
